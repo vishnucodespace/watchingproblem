@@ -35,7 +35,6 @@ const chatInput = document.getElementById('chat-input');
 const chatSendBtn = document.getElementById('chat-send-btn');
 const chatEphemeral = document.getElementById('chat-ephemeral');
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
-const fullscreenBtn = document.getElementById('fullscreen-btn');
 const reactionBtns = {
   '❤️': document.getElementById('reaction-heart-btn'),
   '😂': document.getElementById('reaction-laugh-btn'),
@@ -479,28 +478,7 @@ socket.on('reaction', (emoji) => {
   spawnReaction(emoji);
 });
 
-// ---------------------------------------------------------------------------
-// Custom Fullscreen
-// ---------------------------------------------------------------------------
-fullscreenBtn.addEventListener('click', () => {
-  if (!document.fullscreenElement) {
-    if (screenFrame.requestFullscreen) {
-      screenFrame.requestFullscreen();
-    } else if (screenFrame.webkitRequestFullscreen) { // Safari
-      screenFrame.webkitRequestFullscreen();
-    } else {
-      // Fallback if browser absolutely blocks container fullscreen
-      if (video.requestFullscreen) video.requestFullscreen();
-      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
-    }
-  } else {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
-    }
-});
-
+// Removed broken fullscreen block.
 // ---- Outgoing: user-driven playback events ----
 video.addEventListener('play', () => {
   if (suppressEmit) return;
