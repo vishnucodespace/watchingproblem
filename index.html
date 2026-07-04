@@ -78,9 +78,17 @@
   </header>
 
   <div class="screen-frame">
-    <video id="video" playsinline controls></video>
-    <div id="no-file-placeholder" class="no-file-placeholder">
-      <p>Load tonight's film to begin.</p>
+    <video id="video" controls playsinline></video>
+    <div id="no-file-placeholder" class="no-file">
+      <div class="no-file-icon">🎬</div>
+      <p>Waiting for you to load a reel...</p>
+    </div>
+    
+    <!-- Cinematic Chat & Reactions -->
+    <div id="chat-overlay" class="chat-overlay"></div>
+    <div id="chat-input-container" class="chat-input-container hidden">
+      <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+      <button id="chat-send-btn">➤</button>
     </div>
   </div>
 

@@ -136,6 +136,16 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('chat-message', (text) => {
+    const code = socket.data.room;
+    if (code) socket.to(code).emit('chat-message', text);
+  });
+
+  socket.on('reaction', (emoji) => {
+    const code = socket.data.room;
+    if (code) socket.to(code).emit('reaction', emoji);
+  });
+
   socket.on('disconnect', () => {
     const code = socket.data.room;
     const userId = socket.data.userId;

@@ -25,6 +25,11 @@ const subBtn = document.getElementById('sub-btn');
 const subInput = document.getElementById('sub-input');
 const fileNameEl = document.getElementById('file-name');
 const noFilePlaceholder = document.getElementById('no-file-placeholder');
+const chatOverlay = document.getElementById('chat-overlay');
+const chatInputContainer = document.getElementById('chat-input-container');
+const chatInput = document.getElementById('chat-input');
+const chatSendBtn = document.getElementById('chat-send-btn');
+const screenFrame = document.querySelector('.screen-frame');
 
 // Periodically save the current time to sessionStorage so it survives refreshes
 setInterval(() => {
@@ -327,6 +332,130 @@ subInput.addEventListener('change', async () => {
   } else {
     fileNameEl.textContent = currentText.replace(/\| Subs:.*$/, `| Subs: ${file.name}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Cinematic Chat & Floating Reactions
+// ---------------------------------------------------------------------------
+function showMessage(text, isMine) {
+  const el = document.createElement('div');
+  el.className = 'chat-message';
+  el.textContent = text;
+  if (isMine) el.style.background = 'rgba(212, 162, 78, 0.4)'; // Subtle gold for own messages
+  chatOverlay.appendChild(el);
+  
+  // Keep only last 5 messages on screen
+  while (chatOverlay.children.length > 5) {
+    chatOverlay.firstChild.remove();
+  }
+  
+  // Auto fade out after 8 seconds
+  setTimeout(() => {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 1000);
+  }, 8000);
+}
+
+function sendChat() {
+  const text = chatInput.value.trim();
+  if (!text) {
+    chatInputContainer.classList.add('hidden');
+    return;
+  }
+  
+  showMessage(text, true);
+  socket.emit('chat-message', text);
+  chatInput.value = '';
+  chatInputContainer.classList.add('hidden');
+}
+
+chatInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') sendChat();
+});
+chatSendBtn.addEventListener('click', sendChat);
+
+socket.on('chat-message', (text) => {
+  showMessage(text, false);
+});
+
+// PC shortcut: Enter opens chat
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && currentRoomCode && chatInputContainer.classList.contains('hidden')) {
+    chatInputContainer.classList.remove('hidden');
+    chatInput.focus();
+    e.preventDefault();
+  }
+});
+
+// --- Gestures for Mobile ---
+let touchStartY = 0;
+let touchStartX = 0;
+let longPressTimer = null;
+let isSwipe = false;
+
+screenFrame.addEventListener('touchstart', (e) => {
+  touchStartY = e.touches[0].clientY;
+  touchStartX = e.touches[0].clientX;
+  isSwipe = false;
+  
+  longPressTimer = setTimeout(() => {
+    if (!isSwipe) triggerReaction('❤️', touchStartX);
+  }, 600); // 600ms hold spawns a heart
+}, {passive: true});
+
+screenFrame.addEventListener('touchmove', (e) => {
+  isSwipe = true;
+  if (longPressTimer) clearTimeout(longPressTimer);
+}, {passive: true});
+
+screenFrame.addEventListener('touchend', (e) => {
+  if (longPressTimer) clearTimeout(longPressTimer);
+  
+  if (isSwipe) {
+    const touchEndY = e.changedTouches[0].clientY;
+    const diffY = touchStartY - touchEndY;
+    // Swipe UP opens chat
+    if (diffY > 50 && currentRoomCode) {
+      chatInputContainer.classList.remove('hidden');
+      chatInput.focus();
+    }
+    // Swipe DOWN closes chat
+    if (diffY < -50) {
+      chatInputContainer.classList.add('hidden');
+      chatInput.blur();
+    }
+  }
+}, {passive: true});
+
+// --- Floating Reactions ---
+function spawnReaction(emoji, xPos = null) {
+  const el = document.createElement('div');
+  el.className = 'reaction-bubble';
+  el.textContent = emoji;
+  
+  if (xPos === null) {
+    // Random position avoiding the dead center
+    xPos = Math.random() > 0.5 ? Math.random() * 20 + 5 : Math.random() * 20 + 75;
+    el.style.left = `${xPos}%`;
+  } else {
+    const rect = screenFrame.getBoundingClientRect();
+    let left = xPos - rect.left - 20;
+    if (left < 10) left = 10;
+    if (left > rect.width - 50) left = rect.width - 50;
+    el.style.left = `${left}px`;
+  }
+  
+  screenFrame.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function triggerReaction(emoji, xPos) {
+  spawnReaction(emoji, xPos);
+  socket.emit('reaction', emoji);
+}
+
+socket.on('reaction', (emoji) => {
+  spawnReaction(emoji);
 });
 
 // ---- Outgoing: user-driven playback events ----
