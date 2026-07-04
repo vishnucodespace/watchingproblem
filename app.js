@@ -98,6 +98,20 @@ async function getFileHandle() {
   });
 }
 
+async function saveSubtitles(text, name) {
+  const db = await getDB();
+  db.transaction(storeName, 'readwrite').objectStore(storeName).put({text, name}, 'subs');
+}
+
+async function getSubtitles() {
+  const db = await getDB();
+  return new Promise(resolve => {
+    const request = db.transaction(storeName, 'readonly').objectStore(storeName).get('subs');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // LOOP-PREVENTION, LAYER 2 (client-side):
 // When a sync-event arrives from the other browser, we apply it by calling
@@ -320,6 +334,13 @@ if (window.showOpenFilePicker) {
   });
 }
 
+// Check for saved subtitles on load
+getSubtitles().then(subs => {
+  if (subs) {
+    applySubtitleTrack(subs.text, subs.name);
+  }
+});
+
 socket.on('movie-info', (info) => {
   setStatus(`Your date loaded "${info.name}" — make sure yours matches.`, true);
 });
@@ -329,18 +350,7 @@ socket.on('movie-info', (info) => {
 // ---------------------------------------------------------------------------
 subBtn.addEventListener('click', () => subInput.click());
 
-subInput.addEventListener('change', async () => {
-  const file = subInput.files[0];
-  if (!file) return;
-
-  const text = await file.text();
-  let vttText = text;
-  
-  // Basic SRT to VTT converter (HTML5 video requires VTT format)
-  if (file.name.toLowerCase().endsWith('.srt')) {
-    vttText = 'WEBVTT\n\n' + text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
-  }
-
+function applySubtitleTrack(vttText, fileName) {
   const blob = new Blob([vttText], { type: 'text/vtt' });
   const url = URL.createObjectURL(blob);
 
@@ -361,10 +371,26 @@ subInput.addEventListener('change', async () => {
   // Update filename display
   const currentText = fileNameEl.textContent;
   if (!currentText.includes('| Subs:')) {
-    fileNameEl.textContent = `${currentText} | Subs: ${file.name}`;
+    fileNameEl.textContent = `${currentText} | Subs: ${fileName}`;
   } else {
-    fileNameEl.textContent = currentText.replace(/\| Subs:.*$/, `| Subs: ${file.name}`);
+    fileNameEl.textContent = currentText.replace(/\| Subs:.*$/, `| Subs: ${fileName}`);
   }
+}
+
+subInput.addEventListener('change', async () => {
+  const file = subInput.files[0];
+  if (!file) return;
+
+  const text = await file.text();
+  let vttText = text;
+  
+  // Basic SRT to VTT converter (HTML5 video requires VTT format)
+  if (file.name.toLowerCase().endsWith('.srt')) {
+    vttText = 'WEBVTT\n\n' + text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+  }
+
+  applySubtitleTrack(vttText, file.name);
+  saveSubtitles(vttText, file.name); // Persist to IndexedDB
 });
 
 // ---------------------------------------------------------------------------
