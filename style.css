@@ -561,9 +561,9 @@ button:focus-visible, input:focus-visible {
 }
 
 #chat-send-btn {
-  background: var(--accent-gold);
+  background: #007bff; /* Sleek blue */
   border: none;
-  color: #000;
+  color: #fff;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -572,6 +572,12 @@ button:focus-visible, input:focus-visible {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  transition: all 0.2s ease;
+}
+
+#chat-send-btn:hover {
+  transform: scale(1.05);
+  background: #0056b3;
 }
 
 /* Ephemeral Floating Messages */

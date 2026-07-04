@@ -406,8 +406,8 @@ function showMessage(text, isMine) {
   chatHistory.appendChild(histEl);
   chatHistory.scrollTop = chatHistory.scrollHeight; // auto-scroll to bottom
 
-  // 2. Show Ephemeral Floating Message at bottom center (only for received messages)
-  if (!isMine) {
+  // 2. Show Ephemeral Floating Message (only for received messages, and ONLY if chat is closed)
+  if (!isMine && chatPanel.classList.contains('hidden')) {
     const ephemEl = document.createElement('div');
     ephemEl.className = `chat-message`;
     ephemEl.textContent = text;
