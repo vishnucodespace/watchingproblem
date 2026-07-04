@@ -42,13 +42,28 @@ const reactionBtns = {
   '🍿': document.getElementById('reaction-popcorn-btn')
 };
 
-// Custom Video Controls Elements
-const playPauseBtn = document.getElementById('play-pause-btn');
-const muteBtn = document.getElementById('mute-btn');
-const timeDisplay = document.getElementById('time-display');
-const progressContainer = document.getElementById('progress-container');
-const progressBar = document.getElementById('progress-bar');
 const reactionsLayer = document.getElementById('reactions-layer');
+
+// Initialize Plyr
+const player = new Plyr('#video', {
+  captions: { active: true, update: true, language: 'en' },
+  controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'],
+  settings: ['captions', 'quality', 'speed'],
+});
+
+player.on('ready', () => {
+  // Move our custom overlays inside the Plyr wrapper so they stay visible in Fullscreen!
+  const plyrContainer = document.querySelector('.plyr');
+  const reactionsLayer = document.getElementById('reactions-layer');
+  const chatEphemeral = document.getElementById('chat-ephemeral');
+  const interactionOverlay = document.getElementById('interaction-overlay');
+  
+  if (plyrContainer) {
+    if (reactionsLayer) plyrContainer.appendChild(reactionsLayer);
+    if (chatEphemeral) plyrContainer.appendChild(chatEphemeral);
+    if (interactionOverlay) plyrContainer.appendChild(interactionOverlay);
+  }
+});
 
 // Periodically save the current time to sessionStorage so it survives refreshes
 setInterval(() => {
@@ -484,62 +499,6 @@ fullscreenBtn.addEventListener('click', () => {
     } else if (document.webkitExitFullscreen) {
       document.webkitExitFullscreen();
     }
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Custom Video Controls Logic
-// ---------------------------------------------------------------------------
-function formatTime(seconds) {
-  if (isNaN(seconds)) return "0:00";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function updatePlayPauseIcon() {
-  playPauseBtn.textContent = video.paused ? '▶' : '⏸';
-}
-
-playPauseBtn.addEventListener('click', () => {
-  if (video.paused) video.play();
-  else video.pause();
-});
-
-video.addEventListener('play', updatePlayPauseIcon);
-video.addEventListener('pause', updatePlayPauseIcon);
-
-// Click video to play/pause
-video.addEventListener('click', () => {
-  if (video.paused) video.play();
-  else video.pause();
-});
-
-muteBtn.addEventListener('click', () => {
-  video.muted = !video.muted;
-  muteBtn.textContent = video.muted ? '🔇' : '🔊';
-});
-
-video.addEventListener('timeupdate', () => {
-  if (video.duration) {
-    timeDisplay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
-    const pct = (video.currentTime / video.duration) * 100;
-    progressBar.style.width = `${pct}%`;
-  }
-});
-
-video.addEventListener('loadedmetadata', () => {
-  timeDisplay.textContent = `0:00 / ${formatTime(video.duration)}`;
-});
-
-progressContainer.addEventListener('click', (e) => {
-  if (!video.duration) return;
-  const rect = progressContainer.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const pct = clickX / rect.width;
-  video.currentTime = pct * video.duration;
 });
 
 // ---- Outgoing: user-driven playback events ----
