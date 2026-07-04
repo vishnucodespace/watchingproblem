@@ -75,27 +75,25 @@
       <span id="status" class="status-text">Waiting for your date&hellip;</span>
     </div>
     <button id="leave-room-btn" class="btn btn-outline btn-small" style="margin-left: auto; font-size: 0.8rem; padding: 0.25rem 0.75rem;">Leave Room</button>
-  </header>
-
-  <div class="screen-frame">
-    <video id="video" controls playsinline></video>
-    <div id="no-file-placeholder" class="no-file">
-      <div class="no-file-icon">🎬</div>
-      <p>Waiting for you to load a reel...</p>
-    </div>
-    
-    <!-- Cinematic Chat & Reactions (Auto-Hiding Overlay) -->
-    <div id="interaction-overlay" class="interaction-overlay">
-      <!-- Controls Bar -->
-      <div class="interaction-controls">
-        <button id="reaction-heart-btn" class="icon-btn">❤️</button>
-        <button id="reaction-laugh-btn" class="icon-btn">😂</button>
-        <button id="reaction-popcorn-btn" class="icon-btn">🍿</button>
-        <button id="chat-toggle-btn" class="icon-btn">💬</button>
-        <button id="fullscreen-btn" class="icon-btn">🔲</button>
+    <!-- Video Player Container -->
+    <div class="screen-frame">
+      <video id="video">
+        <track id="subtitles-track" kind="subtitles" srclang="en" label="English" default>
+      </video>
+      <div id="no-file-placeholder" class="no-file-placeholder">
+        <p>Waiting for you to load a reel...</p>
       </div>
+    
+    <!-- Reactions Layer (Outside of auto-hiding UI so they always display) -->
+    <div id="reactions-layer" class="reactions-layer"></div>
 
-      <!-- Chat Panel (Hidden by default) -->
+    <!-- Cinematic Chat & Custom Controls (Auto-Hiding Overlay) -->
+    <div id="interaction-overlay" class="interaction-overlay">
+      
+      <!-- Ephemeral Floating Messages Area (Now at the top/center to not block controls) -->
+      <div id="chat-ephemeral" class="chat-ephemeral"></div>
+
+      <!-- Chat Panel (Hidden by default, transparent background) -->
       <div id="chat-panel" class="chat-panel hidden">
         <div id="chat-history" class="chat-history"></div>
         <div class="chat-input-row">
@@ -104,8 +102,31 @@
         </div>
       </div>
       
-      <!-- Ephemeral Floating Messages Area -->
-      <div id="chat-ephemeral" class="chat-ephemeral"></div>
+      <!-- Custom Control Bar -->
+      <div class="custom-control-bar">
+        <!-- Progress Bar -->
+        <div class="progress-container" id="progress-container">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+
+        <!-- Controls Row -->
+        <div class="controls-row">
+          <div class="controls-left">
+            <button id="play-pause-btn" class="control-btn">▶</button>
+            <button id="mute-btn" class="control-btn">🔊</button>
+            <span id="time-display" class="time-display">0:00 / 0:00</span>
+          </div>
+
+          <div class="controls-right">
+            <button id="reaction-heart-btn" class="control-btn emoji-btn">❤️</button>
+            <button id="reaction-laugh-btn" class="control-btn emoji-btn">😂</button>
+            <button id="reaction-popcorn-btn" class="control-btn emoji-btn">🍿</button>
+            <button id="chat-toggle-btn" class="control-btn">💬</button>
+            <button id="fullscreen-btn" class="control-btn">🔲</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
