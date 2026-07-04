@@ -84,15 +84,15 @@
         <p>Waiting for you to load a reel...</p>
       </div>
     
-    <!-- Reactions Layer (Outside of auto-hiding UI so they always display) -->
+    <!-- Reactions Layer (Always on top) -->
     <div id="reactions-layer" class="reactions-layer"></div>
+
+    <!-- Ephemeral Floating Messages Area (Always visible, positioned above controls) -->
+    <div id="chat-ephemeral" class="chat-ephemeral"></div>
 
     <!-- Cinematic Chat & Custom Controls (Auto-Hiding Overlay) -->
     <div id="interaction-overlay" class="interaction-overlay">
       
-      <!-- Ephemeral Floating Messages Area (Now at the top/center to not block controls) -->
-      <div id="chat-ephemeral" class="chat-ephemeral"></div>
-
       <!-- Chat Panel (Hidden by default, transparent background) -->
       <div id="chat-panel" class="chat-panel hidden">
         <div id="chat-history" class="chat-history"></div>
