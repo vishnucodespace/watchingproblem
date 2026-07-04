@@ -442,9 +442,21 @@ socket.on('chat-message', (text) => {
 // ---------------------------------------------------------------------------
 // Visible Reactions
 // ---------------------------------------------------------------------------
-Object.keys(reactionBtns).forEach(emoji => {
-  reactionBtns[emoji].addEventListener('click', () => {
-    triggerReaction(emoji);
+// Prevent Plyr from entering fullscreen when double-clicking reaction buttons
+document.querySelector('.interaction-controls').addEventListener('dblclick', (e) => {
+  e.stopPropagation();
+});
+document.querySelector('.interaction-controls').addEventListener('click', (e) => {
+  e.stopPropagation(); // Also stop single click from pausing the video via Plyr
+});
+
+Object.entries(reactionBtns).forEach(([emoji, btn]) => {
+  if (!btn) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!currentRoomCode) return;
+    socket.emit('reaction', emoji);
+    spawnReaction(emoji);
   });
 });
 
