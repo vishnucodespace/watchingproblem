@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Two Seats, One Screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="grain-overlay" aria-hidden="true"></div>
+
+<!-- ============================= SETUP SCREEN ============================= -->
+<main id="setup-screen" class="screen">
+  <div class="booth-card">
+
+    <p class="eyebrow">Two Seats &middot; One Screen</p>
+    <h1 class="headline">Same film,<br />two couches,<br /><em>one showtime.</em></h1>
+    <p class="subhead">
+      Each of you opens the same movie file on your own laptop. Nothing gets uploaded —
+      we just keep both players locked to the same second, so a pause in one living room
+      pauses the other, instantly.
+    </p>
+
+    <div class="ticket">
+      <div class="ticket-half">
+        <p class="ticket-label">First to arrive</p>
+        <h2 class="ticket-title">Start tonight's screening</h2>
+        <p class="ticket-copy">We'll print a stub code. Send it to your date.</p>
+        <button id="create-room-btn" class="btn btn-gold">Start screening</button>
+      </div>
+
+      <div class="perforation" aria-hidden="true"></div>
+
+      <div class="ticket-half">
+        <p class="ticket-label">Second to arrive</p>
+        <h2 class="ticket-title">Enter your stub code</h2>
+        <div class="join-row">
+          <input
+            id="room-code-input"
+            class="stub-input"
+            type="text"
+            maxlength="5"
+            placeholder="XXXXX"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+          />
+          <button id="join-room-btn" class="btn btn-outline">Take seat</button>
+        </div>
+        <p id="join-error" class="join-error" role="alert"></p>
+      </div>
+    </div>
+
+    <p class="fineprint">
+      Works best when you both already have the exact same video file downloaded —
+      same cut, same encode. This only synchronizes play, pause, and seek; the file itself
+      never leaves your computer.
+    </p>
+  </div>
+</main>
+
+<!-- ============================ THEATER SCREEN ============================ -->
+<main id="theater-screen" class="screen hidden">
+  <header class="theater-bar">
+    <div class="stub-chip">
+      <span class="stub-chip-label">Stub No.</span>
+      <span id="stub-code" class="stub-chip-code">—</span>
+    </div>
+    <div class="status-line">
+      <span id="status-dot" class="status-dot"></span>
+      <span id="status" class="status-text">Waiting for your date&hellip;</span>
+    </div>
+    <button id="leave-room-btn" class="btn btn-outline btn-small" style="margin-left: auto; font-size: 0.8rem; padding: 0.25rem 0.75rem;">Leave Room</button>
+  </header>
+
+  <div class="screen-frame">
+    <video id="video" playsinline controls></video>
+    <div id="no-file-placeholder" class="no-file-placeholder">
+      <p>Load tonight's film to begin.</p>
+    </div>
+  </div>
+
+  <footer class="reel-bar">
+    <button id="file-btn" class="btn btn-outline file-btn">
+      Load your reel
+    </button>
+    <input id="fallback-file-input" type="file" accept="video/*" hidden />
+    
+    <!-- A hidden button shown only when we have a saved file handle but need permission to read it -->
+    <button id="resume-file-btn" class="btn btn-gold file-btn hidden">
+      Resume watching
+    </button>
+
+    <button id="sub-btn" class="btn btn-outline file-btn" style="margin-left: 1rem;">
+      Load Subtitles (.srt/.vtt)
+    </button>
+    <input id="sub-input" type="file" accept=".srt,.vtt" hidden />
+    
+    <span id="file-name" class="file-name">No file selected on this laptop yet.</span>
+  </footer>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
