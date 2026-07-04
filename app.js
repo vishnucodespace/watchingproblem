@@ -25,11 +25,22 @@ const subBtn = document.getElementById('sub-btn');
 const subInput = document.getElementById('sub-input');
 const fileNameEl = document.getElementById('file-name');
 const noFilePlaceholder = document.getElementById('no-file-placeholder');
-const chatOverlay = document.getElementById('chat-overlay');
-const chatInputContainer = document.getElementById('chat-input-container');
+const screenFrame = document.querySelector('.screen-frame');
+
+// Interaction Overlay Elements
+const interactionOverlay = document.getElementById('interaction-overlay');
+const chatPanel = document.getElementById('chat-panel');
+const chatHistory = document.getElementById('chat-history');
 const chatInput = document.getElementById('chat-input');
 const chatSendBtn = document.getElementById('chat-send-btn');
-const screenFrame = document.querySelector('.screen-frame');
+const chatEphemeral = document.getElementById('chat-ephemeral');
+const chatToggleBtn = document.getElementById('chat-toggle-btn');
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+const reactionBtns = {
+  '❤️': document.getElementById('reaction-heart-btn'),
+  '😂': document.getElementById('reaction-laugh-btn'),
+  '🍿': document.getElementById('reaction-popcorn-btn')
+};
 
 // Periodically save the current time to sessionStorage so it survives refreshes
 setInterval(() => {
@@ -335,38 +346,66 @@ subInput.addEventListener('change', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Cinematic Chat & Floating Reactions
+// Auto-Hiding Overlay Logic (Netflix Style)
 // ---------------------------------------------------------------------------
-function showMessage(text, isMine) {
-  const el = document.createElement('div');
-  el.className = 'chat-message';
-  el.textContent = text;
-  if (isMine) el.style.background = 'rgba(212, 162, 78, 0.4)'; // Subtle gold for own messages
-  chatOverlay.appendChild(el);
+let interactionTimer = null;
+
+function wakeUpOverlay() {
+  interactionOverlay.classList.remove('hide-ui');
+  if (interactionTimer) clearTimeout(interactionTimer);
   
-  // Keep only last 5 messages on screen
-  while (chatOverlay.children.length > 5) {
-    chatOverlay.firstChild.remove();
+  // If the chat panel is currently OPEN, do not hide the UI!
+  if (!chatPanel.classList.contains('hidden')) return;
+
+  interactionTimer = setTimeout(() => {
+    interactionOverlay.classList.add('hide-ui');
+  }, 3000); // Hide after 3 seconds of inactivity
+}
+
+screenFrame.addEventListener('mousemove', wakeUpOverlay);
+screenFrame.addEventListener('touchstart', wakeUpOverlay, {passive: true});
+
+// ---------------------------------------------------------------------------
+// Chat Logic & History
+// ---------------------------------------------------------------------------
+chatToggleBtn.addEventListener('click', () => {
+  chatPanel.classList.toggle('hidden');
+  if (!chatPanel.classList.contains('hidden')) {
+    chatInput.focus();
+    wakeUpOverlay(); // Keep UI awake when chat is open
   }
-  
-  // Auto fade out after 8 seconds
-  setTimeout(() => {
-    el.classList.add('fade-out');
-    setTimeout(() => el.remove(), 1000);
-  }, 8000);
+});
+
+function showMessage(text, isMine) {
+  // 1. Add to permanent Chat History Panel
+  const histEl = document.createElement('div');
+  histEl.className = `chat-msg-bubble ${isMine ? 'chat-msg-mine' : 'chat-msg-theirs'}`;
+  histEl.textContent = text;
+  chatHistory.appendChild(histEl);
+  chatHistory.scrollTop = chatHistory.scrollHeight; // auto-scroll to bottom
+
+  // 2. Show Ephemeral Floating Message at bottom center (only for received messages)
+  if (!isMine) {
+    const ephemEl = document.createElement('div');
+    ephemEl.className = `chat-message`;
+    ephemEl.textContent = text;
+    chatEphemeral.appendChild(ephemEl);
+    
+    // Auto fade out
+    setTimeout(() => {
+      ephemEl.style.opacity = '0';
+      setTimeout(() => ephemEl.remove(), 1000);
+    }, 4000);
+  }
 }
 
 function sendChat() {
   const text = chatInput.value.trim();
-  if (!text) {
-    chatInputContainer.classList.add('hidden');
-    return;
-  }
+  if (!text) return;
   
   showMessage(text, true);
   socket.emit('chat-message', text);
   chatInput.value = '';
-  chatInputContainer.classList.add('hidden');
 }
 
 chatInput.addEventListener('keypress', (e) => {
@@ -378,63 +417,21 @@ socket.on('chat-message', (text) => {
   showMessage(text, false);
 });
 
-// PC shortcut: Enter opens chat
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && currentRoomCode && chatInputContainer.classList.contains('hidden')) {
-    chatInputContainer.classList.remove('hidden');
-    chatInput.focus();
-    e.preventDefault();
-  }
+// ---------------------------------------------------------------------------
+// Visible Reactions
+// ---------------------------------------------------------------------------
+Object.keys(reactionBtns).forEach(emoji => {
+  reactionBtns[emoji].addEventListener('click', () => {
+    triggerReaction(emoji);
+  });
 });
 
-// --- Gestures for Mobile ---
-let touchStartY = 0;
-let touchStartX = 0;
-let longPressTimer = null;
-let isSwipe = false;
-
-screenFrame.addEventListener('touchstart', (e) => {
-  touchStartY = e.touches[0].clientY;
-  touchStartX = e.touches[0].clientX;
-  isSwipe = false;
-  
-  longPressTimer = setTimeout(() => {
-    if (!isSwipe) triggerReaction('❤️', touchStartX);
-  }, 600); // 600ms hold spawns a heart
-}, {passive: true});
-
-screenFrame.addEventListener('touchmove', (e) => {
-  isSwipe = true;
-  if (longPressTimer) clearTimeout(longPressTimer);
-}, {passive: true});
-
-screenFrame.addEventListener('touchend', (e) => {
-  if (longPressTimer) clearTimeout(longPressTimer);
-  
-  if (isSwipe) {
-    const touchEndY = e.changedTouches[0].clientY;
-    const diffY = touchStartY - touchEndY;
-    // Swipe UP opens chat
-    if (diffY > 50 && currentRoomCode) {
-      chatInputContainer.classList.remove('hidden');
-      chatInput.focus();
-    }
-    // Swipe DOWN closes chat
-    if (diffY < -50) {
-      chatInputContainer.classList.add('hidden');
-      chatInput.blur();
-    }
-  }
-}, {passive: true});
-
-// --- Floating Reactions ---
 function spawnReaction(emoji, xPos = null) {
   const el = document.createElement('div');
   el.className = 'reaction-bubble';
   el.textContent = emoji;
   
   if (xPos === null) {
-    // Random position avoiding the dead center
     xPos = Math.random() > 0.5 ? Math.random() * 20 + 5 : Math.random() * 20 + 75;
     el.style.left = `${xPos}%`;
   } else {
@@ -449,13 +446,37 @@ function spawnReaction(emoji, xPos = null) {
   setTimeout(() => el.remove(), 3000);
 }
 
-function triggerReaction(emoji, xPos) {
-  spawnReaction(emoji, xPos);
+function triggerReaction(emoji) {
+  // Spawn locally
+  spawnReaction(emoji); 
   socket.emit('reaction', emoji);
 }
 
 socket.on('reaction', (emoji) => {
   spawnReaction(emoji);
+});
+
+// ---------------------------------------------------------------------------
+// Custom Fullscreen
+// ---------------------------------------------------------------------------
+fullscreenBtn.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    if (screenFrame.requestFullscreen) {
+      screenFrame.requestFullscreen();
+    } else if (screenFrame.webkitRequestFullscreen) { // Safari
+      screenFrame.webkitRequestFullscreen();
+    } else {
+      // Fallback if browser absolutely blocks container fullscreen
+      if (video.requestFullscreen) video.requestFullscreen();
+      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+    }
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+  }
 });
 
 // ---- Outgoing: user-driven playback events ----

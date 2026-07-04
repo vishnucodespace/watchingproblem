@@ -84,11 +84,28 @@
       <p>Waiting for you to load a reel...</p>
     </div>
     
-    <!-- Cinematic Chat & Reactions -->
-    <div id="chat-overlay" class="chat-overlay"></div>
-    <div id="chat-input-container" class="chat-input-container hidden">
-      <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
-      <button id="chat-send-btn">➤</button>
+    <!-- Cinematic Chat & Reactions (Auto-Hiding Overlay) -->
+    <div id="interaction-overlay" class="interaction-overlay">
+      <!-- Controls Bar -->
+      <div class="interaction-controls">
+        <button id="reaction-heart-btn" class="icon-btn">❤️</button>
+        <button id="reaction-laugh-btn" class="icon-btn">😂</button>
+        <button id="reaction-popcorn-btn" class="icon-btn">🍿</button>
+        <button id="chat-toggle-btn" class="icon-btn">💬</button>
+        <button id="fullscreen-btn" class="icon-btn">🔲</button>
+      </div>
+
+      <!-- Chat Panel (Hidden by default) -->
+      <div id="chat-panel" class="chat-panel hidden">
+        <div id="chat-history" class="chat-history"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+          <button id="chat-send-btn">➤</button>
+        </div>
+      </div>
+      
+      <!-- Ephemeral Floating Messages Area -->
+      <div id="chat-ephemeral" class="chat-ephemeral"></div>
     </div>
   </div>
 
