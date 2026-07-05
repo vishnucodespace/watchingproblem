@@ -370,21 +370,32 @@ resumeFileBtn.addEventListener('click', async () => {
   }
 });
 
-// Check for saved file handle on load
-if (window.showOpenFilePicker) {
-  getFileHandle().then(handle => {
-    if (handle) {
-      loadVideoFromHandle(handle);
+async function initSessionPersistence() {
+  // If there's no session flag, it means the tab was just opened (not refreshed).
+  // We wipe the database so that the movie is truly cleared on tab close.
+  if (!sessionStorage.getItem('tsos-active-session')) {
+    await removeSavedFiles();
+    sessionStorage.setItem('tsos-active-session', 'true');
+  }
+
+  // Check for saved file handle on load (survives refresh)
+  if (window.showOpenFilePicker) {
+    getFileHandle().then(handle => {
+      if (handle) {
+        loadVideoFromHandle(handle);
+      }
+    });
+  }
+
+  // Check for saved subtitles on load (survives refresh)
+  getSubtitles().then(subs => {
+    if (subs) {
+      applySubtitleTrack(subs.text, subs.name);
     }
   });
 }
 
-// Check for saved subtitles on load
-getSubtitles().then(subs => {
-  if (subs) {
-    applySubtitleTrack(subs.text, subs.name);
-  }
-});
+initSessionPersistence();
 
 socket.on('movie-info', (info) => {
   setStatus(`Your date loaded "${info.name}" — make sure yours matches.`, true);
