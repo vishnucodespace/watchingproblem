@@ -207,9 +207,52 @@ leaveRoomBtn.addEventListener('click', () => {
   video.pause();
 });
 
+// ---------------------------------------------------------------------------
+// Audio Cues (Synthesized via Web Audio API)
+// ---------------------------------------------------------------------------
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function initAudio() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playPop() {
+  if (!video.paused) return; // Mute if movie is playing!
+  initAudio();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.05);
+  gain.gain.setValueAtTime(0, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + 0.1);
+}
+
+function playDing() {
+  initAudio();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + 0.5);
+}
+
 socket.on('partner-joined', (activeSeats) => {
   if (activeSeats === 2) {
     isDateConnected = true;
+    playDing();
     setStatus('Both seats filled. Enjoy the show.', true);
   }
 });
@@ -479,13 +522,39 @@ function sendChat() {
   chatInput.value = '';
 }
 
-chatInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendChat();
+let typingTimeout;
+chatInput.addEventListener('input', () => {
+  socket.emit('typing');
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => {
+    socket.emit('stop-typing');
+  }, 1500);
 });
-chatSendBtn.addEventListener('click', sendChat);
+
+chatInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    sendChat();
+    socket.emit('stop-typing');
+    clearTimeout(typingTimeout);
+  }
+});
+chatSendBtn.addEventListener('click', () => {
+  sendChat();
+  socket.emit('stop-typing');
+  clearTimeout(typingTimeout);
+});
 
 socket.on('chat-message', (text) => {
+  playPop();
   showMessage(text, false);
+});
+
+socket.on('typing', () => {
+  document.getElementById('typing-indicator').classList.remove('hidden');
+});
+
+socket.on('stop-typing', () => {
+  document.getElementById('typing-indicator').classList.add('hidden');
 });
 
 // ---------------------------------------------------------------------------
@@ -497,6 +566,98 @@ document.querySelector('.interaction-controls').addEventListener('dblclick', (e)
 });
 document.querySelector('.interaction-controls').addEventListener('click', (e) => {
   e.stopPropagation(); // Also stop single click from pausing the video via Plyr
+});
+
+// ---------------------------------------------------------------------------
+// WebRTC Walkie-Talkie (Push-To-Talk)
+// ---------------------------------------------------------------------------
+let localStream;
+let peerConnection;
+const micBtn = document.getElementById('mic-btn');
+const remoteAudio = document.getElementById('remote-audio');
+
+const iceServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+async function getMic() {
+  if (!localStream) {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStream.getAudioTracks().forEach(track => track.enabled = false); // Mute initially
+    } catch (e) {
+      console.error("Mic permission denied", e);
+    }
+  }
+  return localStream;
+}
+
+function getPeerConnection() {
+  if (peerConnection) return peerConnection;
+  peerConnection = new RTCPeerConnection(iceServers);
+  
+  peerConnection.onicecandidate = (e) => {
+    if (e.candidate) socket.emit('webrtc-ice-candidate', e.candidate);
+  };
+  
+  peerConnection.ontrack = (e) => {
+    remoteAudio.srcObject = e.streams[0];
+  };
+
+  peerConnection.onnegotiationneeded = async () => {
+    try {
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      socket.emit('webrtc-offer', peerConnection.localDescription);
+    } catch(e) {}
+  };
+
+  return peerConnection;
+}
+
+async function handleMicDown() {
+  micBtn.classList.add('mic-active');
+  const stream = await getMic();
+  if (stream) {
+    stream.getAudioTracks().forEach(t => t.enabled = true);
+    const pc = getPeerConnection();
+    stream.getTracks().forEach(t => {
+      if (!pc.getSenders().find(s => s.track === t)) {
+        pc.addTrack(t, stream);
+      }
+    });
+  }
+}
+
+function handleMicUp() {
+  micBtn.classList.remove('mic-active');
+  if (localStream) {
+    localStream.getAudioTracks().forEach(t => t.enabled = false);
+  }
+}
+
+micBtn.addEventListener('mousedown', handleMicDown);
+micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); handleMicDown(); }, {passive: false});
+micBtn.addEventListener('mouseup', handleMicUp);
+micBtn.addEventListener('mouseleave', handleMicUp);
+micBtn.addEventListener('touchend', handleMicUp);
+
+socket.on('webrtc-offer', async (offer) => {
+  const pc = getPeerConnection();
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  socket.emit('webrtc-answer', pc.localDescription);
+});
+
+socket.on('webrtc-answer', async (answer) => {
+  if (peerConnection && peerConnection.signalingState !== 'stable') {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+  }
+});
+
+socket.on('webrtc-ice-candidate', async (candidate) => {
+  if (peerConnection) {
+    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e=>{});
+  }
 });
 
 Object.entries(reactionBtns).forEach(([emoji, btn]) => {
