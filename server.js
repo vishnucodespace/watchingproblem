@@ -146,31 +146,6 @@ io.on('connection', (socket) => {
     if (code) socket.to(code).emit('reaction', emoji);
   });
 
-  socket.on('typing', () => {
-    const code = socket.data.room;
-    if (code) socket.to(code).emit('typing');
-  });
-
-  socket.on('stop-typing', () => {
-    const code = socket.data.room;
-    if (code) socket.to(code).emit('stop-typing');
-  });
-
-  socket.on('webrtc-offer', (offer) => {
-    const code = socket.data.room;
-    if (code) socket.to(code).emit('webrtc-offer', offer);
-  });
-
-  socket.on('webrtc-answer', (answer) => {
-    const code = socket.data.room;
-    if (code) socket.to(code).emit('webrtc-answer', answer);
-  });
-
-  socket.on('webrtc-ice-candidate', (candidate) => {
-    const code = socket.data.room;
-    if (code) socket.to(code).emit('webrtc-ice-candidate', candidate);
-  });
-
   socket.on('disconnect', () => {
     const code = socket.data.room;
     const userId = socket.data.userId;

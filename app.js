@@ -19,6 +19,7 @@ const statusEl = document.getElementById('status');
 const leaveRoomBtn = document.getElementById('leave-room-btn');
 const video = document.getElementById('video');
 const fileBtn = document.getElementById('file-btn');
+const removeFileBtn = document.getElementById('remove-file-btn');
 const fallbackFileInput = document.getElementById('fallback-file-input');
 const resumeFileBtn = document.getElementById('resume-file-btn');
 const subBtn = document.getElementById('sub-btn');
@@ -112,6 +113,12 @@ async function getSubtitles() {
   });
 }
 
+async function removeSavedFiles() {
+  const db = await getDB();
+  db.transaction(storeName, 'readwrite').objectStore(storeName).delete('movie');
+  db.transaction(storeName, 'readwrite').objectStore(storeName).delete('subs');
+}
+
 // ---------------------------------------------------------------------------
 // LOOP-PREVENTION, LAYER 2 (client-side):
 // When a sync-event arrives from the other browser, we apply it by calling
@@ -187,8 +194,6 @@ function attemptJoin() {
   });
 }
 
-let isDateConnected = false;
-
 function enterTheater(code) {
   stubCodeEl.textContent = code;
   setupScreen.classList.add('hidden');
@@ -203,105 +208,13 @@ leaveRoomBtn.addEventListener('click', () => {
   sessionStorage.removeItem('tsos-room-code');
   theaterScreen.classList.add('hidden');
   setupScreen.classList.remove('hidden');
-  isDateConnected = false;
   video.pause();
 });
 
-// ---------------------------------------------------------------------------
-// Audio Cues (Synthesized via Web Audio API)
-// ---------------------------------------------------------------------------
-const AudioCtx = window.AudioContext || window.webkitAudioContext;
-let audioCtx;
-function initAudio() {
-  if (!audioCtx) audioCtx = new AudioCtx();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-}
-
-function playPop() {
-  if (!video.paused) return; // Mute if movie is playing!
-  initAudio();
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.05);
-  gain.gain.setValueAtTime(0, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + 0.1);
-}
-
-function playHappyJoin() {
-  initAudio();
-  const t = audioCtx.currentTime;
-  
-  // A bright, happy arpeggio (C5 -> E5 -> G5)
-  const notes = [523.25, 659.25, 783.99]; 
-  
-  notes.forEach((freq, i) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    
-    const startTime = t + (i * 0.15);
-    osc.frequency.setValueAtTime(freq, startTime);
-    
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(0.15, startTime + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
-    
-    osc.start(startTime);
-    osc.stop(startTime + 0.4);
-  });
-}
-
-function playSadLeave() {
-  initAudio();
-  const t = audioCtx.currentTime;
-  
-  // A sad, descending minor sound (G4 -> Eb4 -> C4)
-  const notes = [392.00, 311.13, 261.63]; 
-  
-  notes.forEach((freq, i) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'triangle'; // Triangle wave for a slightly more somber tone
-    
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    
-    const startTime = t + (i * 0.25);
-    osc.frequency.setValueAtTime(freq, startTime);
-    // Slight pitch bend down for extra sadness on the last note
-    if (i === 2) {
-      osc.frequency.linearRampToValueAtTime(freq * 0.9, startTime + 0.5);
-    }
-    
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(0.2, startTime + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.6);
-    
-    osc.start(startTime);
-    osc.stop(startTime + 0.6);
-  });
-}
-
 socket.on('partner-joined', (activeSeats) => {
-  if (activeSeats === 2) {
-    isDateConnected = true;
-    playHappyJoin();
-    setStatus('Both seats filled. Enjoy the show.', true);
-  }
+  if (activeSeats === 2) setStatus('Both seats filled. Enjoy the show.', true);
 });
 socket.on('partner-left', () => {
-  isDateConnected = false;
-  playSadLeave();
   setStatus("Your date's stepped into the lobby…", false);
   if (!video.paused) {
     video.pause();
@@ -311,12 +224,8 @@ socket.on('partner-left', () => {
 
 socket.on('disconnect', () => {
   console.log('[DEBUG] Socket disconnected. currentRoomCode:', currentRoomCode);
-  isDateConnected = false;
-  if (!video.paused) {
-    video.pause();
-  }
   if (currentRoomCode) {
-    setStatus('Connection lost, pausing movie. Attempting to reconnect...', false);
+    setStatus('Connection lost. Attempting to reconnect...', false);
   } else {
     setStatus('Lost connection to the theater.', false);
   }
@@ -330,14 +239,11 @@ socket.on('connect', () => {
       if (res?.ok) {
         enterTheater(currentRoomCode); // Ensure UI jumps straight to theater
         if (res.size === 2) {
-          isDateConnected = true;
           setStatus('Both seats filled. Enjoy the show.', true);
         } else {
-          isDateConnected = false;
           setStatus("Your date's stepped into the lobby…", false);
         }
       } else {
-        isDateConnected = false;
         setStatus('Screening closed or locked. Please refresh.', false);
         currentRoomCode = null;
         sessionStorage.removeItem('tsos-room-code');
@@ -358,6 +264,12 @@ function setStatus(text, connected) {
 async function loadVideoFromHandle(handle) {
   try {
     const file = await handle.getFile();
+    
+    // Warn user if it's an MKV or AVI file
+    if (file.name.toLowerCase().endsWith('.mkv') || file.name.toLowerCase().endsWith('.avi')) {
+      alert("⚠️ WARNING: Web browsers do not natively support .mkv or .avi video formats! You will likely hear audio but see no video.\n\nPlease convert the movie to an .mp4 file using a tool like Handbrake before watching.");
+    }
+
     const url = URL.createObjectURL(file);
     video.src = url;
     video.load();
@@ -371,11 +283,14 @@ async function loadVideoFromHandle(handle) {
     noFilePlaceholder.classList.add('hidden');
     fileNameEl.textContent = file.name;
     resumeFileBtn.classList.add('hidden');
-    fileBtn.classList.remove('hidden');
+    fileBtn.classList.add('hidden');
+    removeFileBtn.classList.remove('hidden');
+    socket.emit('movie-info', { name: file.name });
   } catch (error) {
     // Usually means permission was not granted (e.g., page refresh)
     fileBtn.classList.add('hidden');
     resumeFileBtn.classList.remove('hidden');
+    removeFileBtn.classList.add('hidden');
     fileNameEl.textContent = `Movie saved. Click resume to watch.`;
   }
 }
@@ -400,27 +315,41 @@ fileBtn.addEventListener('click', async () => {
 
 fallbackFileInput.addEventListener('change', () => {
   const file = fallbackFileInput.files[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  video.src = url;
-  video.load();
-  
-  // Restore time if we have it
-  const savedTime = sessionStorage.getItem('tsos-video-time');
-  if (savedTime) {
-    video.currentTime = parseFloat(savedTime);
+  if (file) {
+    // Warn user if it's an MKV or AVI file
+    if (file.name.toLowerCase().endsWith('.mkv') || file.name.toLowerCase().endsWith('.avi')) {
+      alert("⚠️ WARNING: Web browsers do not natively support .mkv or .avi video formats! You will likely hear audio but see no video.\n\nPlease convert the movie to an .mp4 file using a tool like Handbrake before watching.");
+    }
+
+    const url = URL.createObjectURL(file);
+    video.src = url;
+    video.load();
+    noFilePlaceholder.classList.add('hidden');
+    fileNameEl.textContent = file.name;
+    fileBtn.classList.add('hidden');
+    removeFileBtn.classList.remove('hidden');
+    socket.emit('movie-info', { name: file.name });
   }
-  
-  noFilePlaceholder.classList.add('hidden');
-  fileNameEl.textContent = file.name;
-  resumeFileBtn.classList.add('hidden'); // Cannot persist without File System API
 });
 
-video.addEventListener('loadedmetadata', () => {
-  const currentName = fileNameEl.textContent.split(' | ')[0];
-  if (currentName && currentName !== 'No file selected') {
-    socket.emit('movie-info', { name: currentName, duration: video.duration });
-  }
+removeFileBtn.addEventListener('click', async () => {
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  await removeSavedFiles();
+  sessionStorage.removeItem('tsos-video-time');
+  
+  // Remove subtitles track if present
+  const oldTrack = video.querySelector('track');
+  if (oldTrack) oldTrack.remove();
+  
+  noFilePlaceholder.classList.remove('hidden');
+  fileNameEl.textContent = "No file selected on this laptop yet.";
+  removeFileBtn.classList.add('hidden');
+  fileBtn.classList.remove('hidden');
+  resumeFileBtn.classList.add('hidden');
+  
+  socket.emit('movie-info', { name: "No file selected" });
 });
 
 resumeFileBtn.addEventListener('click', async () => {
@@ -448,11 +377,7 @@ getSubtitles().then(subs => {
 });
 
 socket.on('movie-info', (info) => {
-  if (video.duration && info.duration && Math.abs(video.duration - info.duration) > 5) {
-    setStatus(`⚠️ Warning: Your movie files are different lengths. Syncing may fail!`, false);
-  } else {
-    setStatus(`Your date loaded "${info.name}" — make sure yours matches.`, true);
-  }
+  setStatus(`Your date loaded "${info.name}" — make sure yours matches.`, true);
 });
 
 // ---------------------------------------------------------------------------
@@ -566,39 +491,13 @@ function sendChat() {
   chatInput.value = '';
 }
 
-let typingTimeout;
-chatInput.addEventListener('input', () => {
-  socket.emit('typing');
-  clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(() => {
-    socket.emit('stop-typing');
-  }, 1500);
-});
-
 chatInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    sendChat();
-    socket.emit('stop-typing');
-    clearTimeout(typingTimeout);
-  }
+  if (e.key === 'Enter') sendChat();
 });
-chatSendBtn.addEventListener('click', () => {
-  sendChat();
-  socket.emit('stop-typing');
-  clearTimeout(typingTimeout);
-});
+chatSendBtn.addEventListener('click', sendChat);
 
 socket.on('chat-message', (text) => {
-  playPop();
   showMessage(text, false);
-});
-
-socket.on('typing', () => {
-  document.getElementById('typing-indicator').classList.remove('hidden');
-});
-
-socket.on('stop-typing', () => {
-  document.getElementById('typing-indicator').classList.add('hidden');
 });
 
 // ---------------------------------------------------------------------------
@@ -610,98 +509,6 @@ document.querySelector('.interaction-controls').addEventListener('dblclick', (e)
 });
 document.querySelector('.interaction-controls').addEventListener('click', (e) => {
   e.stopPropagation(); // Also stop single click from pausing the video via Plyr
-});
-
-// ---------------------------------------------------------------------------
-// WebRTC Walkie-Talkie (Push-To-Talk)
-// ---------------------------------------------------------------------------
-let localStream;
-let peerConnection;
-const micBtn = document.getElementById('mic-btn');
-const remoteAudio = document.getElementById('remote-audio');
-
-const iceServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-
-async function getMic() {
-  if (!localStream) {
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStream.getAudioTracks().forEach(track => track.enabled = false); // Mute initially
-    } catch (e) {
-      console.error("Mic permission denied", e);
-    }
-  }
-  return localStream;
-}
-
-function getPeerConnection() {
-  if (peerConnection) return peerConnection;
-  peerConnection = new RTCPeerConnection(iceServers);
-  
-  peerConnection.onicecandidate = (e) => {
-    if (e.candidate) socket.emit('webrtc-ice-candidate', e.candidate);
-  };
-  
-  peerConnection.ontrack = (e) => {
-    remoteAudio.srcObject = e.streams[0];
-  };
-
-  peerConnection.onnegotiationneeded = async () => {
-    try {
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      socket.emit('webrtc-offer', peerConnection.localDescription);
-    } catch(e) {}
-  };
-
-  return peerConnection;
-}
-
-async function handleMicDown() {
-  micBtn.classList.add('mic-active');
-  const stream = await getMic();
-  if (stream) {
-    stream.getAudioTracks().forEach(t => t.enabled = true);
-    const pc = getPeerConnection();
-    stream.getTracks().forEach(t => {
-      if (!pc.getSenders().find(s => s.track === t)) {
-        pc.addTrack(t, stream);
-      }
-    });
-  }
-}
-
-function handleMicUp() {
-  micBtn.classList.remove('mic-active');
-  if (localStream) {
-    localStream.getAudioTracks().forEach(t => t.enabled = false);
-  }
-}
-
-micBtn.addEventListener('mousedown', handleMicDown);
-micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); handleMicDown(); }, {passive: false});
-micBtn.addEventListener('mouseup', handleMicUp);
-micBtn.addEventListener('mouseleave', handleMicUp);
-micBtn.addEventListener('touchend', handleMicUp);
-
-socket.on('webrtc-offer', async (offer) => {
-  const pc = getPeerConnection();
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  socket.emit('webrtc-answer', pc.localDescription);
-});
-
-socket.on('webrtc-answer', async (answer) => {
-  if (peerConnection && peerConnection.signalingState !== 'stable') {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-  }
-});
-
-socket.on('webrtc-ice-candidate', async (candidate) => {
-  if (peerConnection) {
-    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e=>{});
-  }
 });
 
 Object.entries(reactionBtns).forEach(([emoji, btn]) => {
@@ -747,11 +554,6 @@ socket.on('reaction', (emoji) => {
 // Removed broken fullscreen block.
 // ---- Outgoing: user-driven playback events ----
 video.addEventListener('play', () => {
-  if (!isDateConnected) {
-    video.pause();
-    setStatus("Hold up! Wait for your date to join before playing.", false);
-    return;
-  }
   if (suppressEmit) return;
   socket.emit('sync-event', { action: 'play', time: video.currentTime });
 });
@@ -766,16 +568,6 @@ video.addEventListener('seeked', () => {
   if (Math.abs(video.currentTime - lastEmittedTime) < 0.05) return; // ignore no-op seeks
   lastEmittedTime = video.currentTime;
   socket.emit('sync-event', { action: 'seek', time: video.currentTime });
-});
-
-video.addEventListener('waiting', () => {
-  if (suppressEmit) return;
-  socket.emit('sync-event', { action: 'buffering', time: video.currentTime });
-});
-
-video.addEventListener('playing', () => {
-  if (suppressEmit) return;
-  socket.emit('sync-event', { action: 'playing', time: video.currentTime });
 });
 
 // ---- Incoming: apply the partner's action without echoing it back ----
@@ -804,19 +596,6 @@ socket.on('sync-event', ({ action, time }) => {
       case 'seek':
         video.currentTime = time;
         lastEmittedTime = time;
-        break;
-
-      case 'buffering':
-        video.pause();
-        setStatus("Your date's video is buffering...", false);
-        break;
-      
-      case 'playing':
-        if (Math.abs(video.currentTime - time) > SEEK_THRESHOLD_SEC) {
-          video.currentTime = time;
-        }
-        video.play().catch(() => {});
-        setStatus("Both seats filled. Enjoy the show.", true);
         break;
     }
   });

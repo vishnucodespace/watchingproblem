@@ -15,9 +15,6 @@
 
 <div class="grain-overlay" aria-hidden="true"></div>
 
-<!-- Hidden audio element for WebRTC Walkie-Talkie -->
-<audio id="remote-audio" autoplay></audio>
-
 <!-- ============================= SETUP SCREEN ============================= -->
 <main id="setup-screen" class="screen">
   <div class="booth-card">
@@ -105,16 +102,14 @@
         <button id="reaction-heart-btn" class="icon-btn">❤️</button>
         <button id="reaction-laugh-btn" class="icon-btn">😂</button>
         <button id="reaction-popcorn-btn" class="icon-btn">🍿</button>
-        <button id="mic-btn" class="icon-btn" title="Hold to Talk">🎤</button>
         <button id="chat-toggle-btn" class="icon-btn">💬</button>
       </div>
 
       <!-- Chat Panel (Hidden by default, transparent background) -->
       <div id="chat-panel" class="chat-panel hidden">
         <div id="chat-history" class="chat-history"></div>
-        <div id="typing-indicator" class="typing-indicator hidden">Your date is typing...</div>
         <div class="chat-input-row">
-          <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" />
+          <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
           <button id="chat-send-btn">➤</button>
         </div>
       </div>
@@ -125,6 +120,9 @@
   <footer class="reel-bar">
     <button id="file-btn" class="btn btn-outline file-btn">
       Load your reel
+    </button>
+    <button id="remove-file-btn" class="btn btn-outline file-btn hidden" style="border-color: var(--accent-rose); color: var(--accent-rose);">
+      Remove Movie
     </button>
     <input id="fallback-file-input" type="file" accept="video/*" hidden />
     

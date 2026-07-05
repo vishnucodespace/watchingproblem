@@ -313,11 +313,8 @@ button, input {
 }
 
 .screen-frame {
+  flex: 1;
   width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: 70vh;
-  margin-top: auto;
-  margin-bottom: auto;
   position: relative;
   background: #000;
   display: flex;
@@ -486,19 +483,6 @@ button:focus-visible, input:focus-visible {
   transform: scale(0.95);
 }
 
-.icon-btn.mic-active {
-  background: rgba(244, 63, 94, 0.8);
-  border-color: #fff;
-  box-shadow: 0 0 15px rgba(244, 63, 94, 0.6);
-  animation: pulse-mic 1s infinite;
-}
-
-@keyframes pulse-mic {
-  0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.6); }
-  70% { box-shadow: 0 0 0 10px rgba(244, 63, 94, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); }
-}
-
 /* Chat Panel */
 .chat-panel {
   position: absolute;
@@ -528,19 +512,6 @@ button:focus-visible, input:focus-visible {
   pointer-events: none;
 }
 
-.typing-indicator {
-  font-size: 0.8rem;
-  color: var(--ink-muted);
-  font-style: italic;
-  padding: 4px 8px;
-  animation: pulse-opacity 1.5s infinite;
-}
-
-@keyframes pulse-opacity {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
 .chat-history {
   flex: 1;
   overflow-y: auto;
@@ -550,10 +521,6 @@ button:focus-visible, input:focus-visible {
   gap: 8px;
   mask-image: linear-gradient(to bottom, transparent, black 15%);
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 15%);
-}
-
-.chat-history > :first-child {
-  margin-top: auto;
 }
 
 .chat-history::-webkit-scrollbar {
