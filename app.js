@@ -217,8 +217,11 @@ socket.on('partner-left', () => {
 
 socket.on('disconnect', () => {
   console.log('[DEBUG] Socket disconnected. currentRoomCode:', currentRoomCode);
+  if (!video.paused) {
+    video.pause();
+  }
   if (currentRoomCode) {
-    setStatus('Connection lost. Attempting to reconnect...', false);
+    setStatus('Connection lost, pausing movie. Attempting to reconnect...', false);
   } else {
     setStatus('Lost connection to the theater.', false);
   }
@@ -271,7 +274,6 @@ async function loadVideoFromHandle(handle) {
     fileNameEl.textContent = file.name;
     resumeFileBtn.classList.add('hidden');
     fileBtn.classList.remove('hidden');
-    socket.emit('movie-info', { name: file.name });
   } catch (error) {
     // Usually means permission was not granted (e.g., page refresh)
     fileBtn.classList.add('hidden');
@@ -314,7 +316,13 @@ fallbackFileInput.addEventListener('change', () => {
   noFilePlaceholder.classList.add('hidden');
   fileNameEl.textContent = file.name;
   resumeFileBtn.classList.add('hidden'); // Cannot persist without File System API
-  socket.emit('movie-info', { name: file.name });
+});
+
+video.addEventListener('loadedmetadata', () => {
+  const currentName = fileNameEl.textContent.split(' | ')[0];
+  if (currentName && currentName !== 'No file selected') {
+    socket.emit('movie-info', { name: currentName, duration: video.duration });
+  }
 });
 
 resumeFileBtn.addEventListener('click', async () => {
@@ -342,7 +350,11 @@ getSubtitles().then(subs => {
 });
 
 socket.on('movie-info', (info) => {
-  setStatus(`Your date loaded "${info.name}" — make sure yours matches.`, true);
+  if (video.duration && info.duration && Math.abs(video.duration - info.duration) > 5) {
+    setStatus(`⚠️ Warning: Your movie files are different lengths. Syncing may fail!`, false);
+  } else {
+    setStatus(`Your date loaded "${info.name}" — make sure yours matches.`, true);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -535,6 +547,16 @@ video.addEventListener('seeked', () => {
   socket.emit('sync-event', { action: 'seek', time: video.currentTime });
 });
 
+video.addEventListener('waiting', () => {
+  if (suppressEmit) return;
+  socket.emit('sync-event', { action: 'buffering', time: video.currentTime });
+});
+
+video.addEventListener('playing', () => {
+  if (suppressEmit) return;
+  socket.emit('sync-event', { action: 'playing', time: video.currentTime });
+});
+
 // ---- Incoming: apply the partner's action without echoing it back ----
 socket.on('sync-event', ({ action, time }) => {
   if (typeof time !== 'number') return;
@@ -561,6 +583,19 @@ socket.on('sync-event', ({ action, time }) => {
       case 'seek':
         video.currentTime = time;
         lastEmittedTime = time;
+        break;
+
+      case 'buffering':
+        video.pause();
+        setStatus("Your date's video is buffering...", false);
+        break;
+      
+      case 'playing':
+        if (Math.abs(video.currentTime - time) > SEEK_THRESHOLD_SEC) {
+          video.currentTime = time;
+        }
+        video.play().catch(() => {});
+        setStatus("Both seats filled. Enjoy the show.", true);
         break;
     }
   });
