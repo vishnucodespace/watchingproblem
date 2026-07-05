@@ -234,30 +234,74 @@ function playPop() {
   osc.stop(audioCtx.currentTime + 0.1);
 }
 
-function playDing() {
+function playHappyJoin() {
   initAudio();
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-  gain.gain.setValueAtTime(0, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + 0.5);
+  const t = audioCtx.currentTime;
+  
+  // A bright, happy arpeggio (C5 -> E5 -> G5)
+  const notes = [523.25, 659.25, 783.99]; 
+  
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    const startTime = t + (i * 0.15);
+    osc.frequency.setValueAtTime(freq, startTime);
+    
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(0.15, startTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
+    
+    osc.start(startTime);
+    osc.stop(startTime + 0.4);
+  });
+}
+
+function playSadLeave() {
+  initAudio();
+  const t = audioCtx.currentTime;
+  
+  // A sad, descending minor sound (G4 -> Eb4 -> C4)
+  const notes = [392.00, 311.13, 261.63]; 
+  
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle'; // Triangle wave for a slightly more somber tone
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    const startTime = t + (i * 0.25);
+    osc.frequency.setValueAtTime(freq, startTime);
+    // Slight pitch bend down for extra sadness on the last note
+    if (i === 2) {
+      osc.frequency.linearRampToValueAtTime(freq * 0.9, startTime + 0.5);
+    }
+    
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(0.2, startTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.6);
+    
+    osc.start(startTime);
+    osc.stop(startTime + 0.6);
+  });
 }
 
 socket.on('partner-joined', (activeSeats) => {
   if (activeSeats === 2) {
     isDateConnected = true;
-    playDing();
+    playHappyJoin();
     setStatus('Both seats filled. Enjoy the show.', true);
   }
 });
 socket.on('partner-left', () => {
   isDateConnected = false;
+  playSadLeave();
   setStatus("Your date's stepped into the lobby…", false);
   if (!video.paused) {
     video.pause();

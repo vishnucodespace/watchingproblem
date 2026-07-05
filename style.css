@@ -313,8 +313,11 @@ button, input {
 }
 
 .screen-frame {
-  flex: 1;
   width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 70vh;
+  margin-top: auto;
+  margin-bottom: auto;
   position: relative;
   background: #000;
   display: flex;
@@ -547,6 +550,10 @@ button:focus-visible, input:focus-visible {
   gap: 8px;
   mask-image: linear-gradient(to bottom, transparent, black 15%);
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 15%);
+}
+
+.chat-history > :first-child {
+  margin-top: auto;
 }
 
 .chat-history::-webkit-scrollbar {
