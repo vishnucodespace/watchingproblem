@@ -187,6 +187,8 @@ function attemptJoin() {
   });
 }
 
+let isDateConnected = false;
+
 function enterTheater(code) {
   stubCodeEl.textContent = code;
   setupScreen.classList.add('hidden');
@@ -201,13 +203,18 @@ leaveRoomBtn.addEventListener('click', () => {
   sessionStorage.removeItem('tsos-room-code');
   theaterScreen.classList.add('hidden');
   setupScreen.classList.remove('hidden');
+  isDateConnected = false;
   video.pause();
 });
 
 socket.on('partner-joined', (activeSeats) => {
-  if (activeSeats === 2) setStatus('Both seats filled. Enjoy the show.', true);
+  if (activeSeats === 2) {
+    isDateConnected = true;
+    setStatus('Both seats filled. Enjoy the show.', true);
+  }
 });
 socket.on('partner-left', () => {
+  isDateConnected = false;
   setStatus("Your date's stepped into the lobby…", false);
   if (!video.paused) {
     video.pause();
@@ -217,6 +224,7 @@ socket.on('partner-left', () => {
 
 socket.on('disconnect', () => {
   console.log('[DEBUG] Socket disconnected. currentRoomCode:', currentRoomCode);
+  isDateConnected = false;
   if (!video.paused) {
     video.pause();
   }
@@ -235,11 +243,14 @@ socket.on('connect', () => {
       if (res?.ok) {
         enterTheater(currentRoomCode); // Ensure UI jumps straight to theater
         if (res.size === 2) {
+          isDateConnected = true;
           setStatus('Both seats filled. Enjoy the show.', true);
         } else {
+          isDateConnected = false;
           setStatus("Your date's stepped into the lobby…", false);
         }
       } else {
+        isDateConnected = false;
         setStatus('Screening closed or locked. Please refresh.', false);
         currentRoomCode = null;
         sessionStorage.removeItem('tsos-room-code');
@@ -531,6 +542,11 @@ socket.on('reaction', (emoji) => {
 // Removed broken fullscreen block.
 // ---- Outgoing: user-driven playback events ----
 video.addEventListener('play', () => {
+  if (!isDateConnected) {
+    video.pause();
+    setStatus("Hold up! Wait for your date to join before playing.", false);
+    return;
+  }
   if (suppressEmit) return;
   socket.emit('sync-event', { action: 'play', time: video.currentTime });
 });
