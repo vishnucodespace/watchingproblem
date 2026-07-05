@@ -24,6 +24,7 @@ const fallbackFileInput = document.getElementById('fallback-file-input');
 const resumeFileBtn = document.getElementById('resume-file-btn');
 const subBtn = document.getElementById('sub-btn');
 const subInput = document.getElementById('sub-input');
+const removeSubBtn = document.getElementById('remove-sub-btn');
 const fileNameEl = document.getElementById('file-name');
 const noFilePlaceholder = document.getElementById('no-file-placeholder');
 const screenFrame = document.querySelector('.screen-frame');
@@ -116,6 +117,11 @@ async function getSubtitles() {
 async function removeSavedFiles() {
   const db = await getDB();
   db.transaction(storeName, 'readwrite').objectStore(storeName).delete('movie');
+  db.transaction(storeName, 'readwrite').objectStore(storeName).delete('subs');
+}
+
+async function removeSavedSubtitles() {
+  const db = await getDB();
   db.transaction(storeName, 'readwrite').objectStore(storeName).delete('subs');
 }
 
@@ -346,6 +352,7 @@ removeFileBtn.addEventListener('click', async () => {
   noFilePlaceholder.classList.remove('hidden');
   fileNameEl.textContent = "No file selected on this laptop yet.";
   removeFileBtn.classList.add('hidden');
+  removeSubBtn.classList.add('hidden');
   fileBtn.classList.remove('hidden');
   resumeFileBtn.classList.add('hidden');
   
@@ -410,6 +417,8 @@ function applySubtitleTrack(vttText, fileName) {
   } else {
     fileNameEl.textContent = currentText.replace(/\| Subs:.*$/, `| Subs: ${fileName}`);
   }
+  
+  removeSubBtn.classList.remove('hidden');
 }
 
 subInput.addEventListener('change', async () => {
@@ -426,6 +435,19 @@ subInput.addEventListener('change', async () => {
 
   applySubtitleTrack(vttText, file.name);
   saveSubtitles(vttText, file.name); // Persist to IndexedDB
+});
+
+removeSubBtn.addEventListener('click', async () => {
+  const oldTrack = video.querySelector('track');
+  if (oldTrack) oldTrack.remove();
+  
+  await removeSavedSubtitles();
+  
+  // Clean up filename display
+  const currentText = fileNameEl.textContent;
+  fileNameEl.textContent = currentText.replace(/ \| Subs:.*$/, '');
+  
+  removeSubBtn.classList.add('hidden');
 });
 
 // ---------------------------------------------------------------------------
