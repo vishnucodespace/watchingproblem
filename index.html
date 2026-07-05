@@ -97,8 +97,9 @@
     <!-- Cinematic Chat & Interaction Controls (Auto-Hiding Overlay) -->
     <div id="interaction-overlay" class="interaction-overlay">
       
-      <!-- Floating Buttons (Bottom Right, above Plyr controls) -->
+      <!-- Floating Buttons (Top Left, above Plyr controls) -->
       <div class="interaction-controls">
+        <button id="walkie-btn" class="icon-btn">🎤</button>
         <button id="reaction-heart-btn" class="icon-btn">❤️</button>
         <button id="reaction-laugh-btn" class="icon-btn">😂</button>
         <button id="reaction-popcorn-btn" class="icon-btn">🍿</button>
@@ -114,6 +115,8 @@
         </div>
       </div>
 
+      <!-- Hidden audio element for WebRTC Walkie-Talkie -->
+      <audio id="walkie-audio" autoplay hidden></audio>
     </div>
   </div>
 

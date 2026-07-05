@@ -116,6 +116,22 @@ io.on('connection', (socket) => {
     socket.to(room).emit('movie-info', info);
   });
 
+  // WebRTC Signaling
+  socket.on('webrtc-offer', (offer) => {
+    const room = socket.data.room;
+    if (room) socket.to(room).emit('webrtc-offer', offer);
+  });
+
+  socket.on('webrtc-answer', (answer) => {
+    const room = socket.data.room;
+    if (room) socket.to(room).emit('webrtc-answer', answer);
+  });
+
+  socket.on('webrtc-ice-candidate', (candidate) => {
+    const room = socket.data.room;
+    if (room) socket.to(room).emit('webrtc-ice-candidate', candidate);
+  });
+
   socket.on('leave-room', () => {
     const code = socket.data.room;
     const userId = socket.data.userId;

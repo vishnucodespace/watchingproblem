@@ -450,8 +450,8 @@ button:focus-visible, input:focus-visible {
 
 .interaction-controls {
   position: absolute;
-  top: 20px; /* Float at top right */
-  right: 20px;
+  top: 20px; /* Float at top left */
+  left: 20px;
   display: flex;
   gap: 12px;
   pointer-events: auto; /* Clickable */
@@ -479,15 +479,22 @@ button:focus-visible, input:focus-visible {
   transform: scale(1.05);
 }
 
-.icon-btn:active {
+.icon-btn:active, .icon-btn.recording {
   transform: scale(0.95);
+}
+
+.icon-btn.recording {
+  background: rgba(244, 63, 94, 0.8); /* Red */
+  border-color: #F43F5E;
+  box-shadow: 0 0 15px rgba(244, 63, 94, 0.6);
+  color: white;
 }
 
 /* Chat Panel */
 .chat-panel {
   position: absolute;
   top: 80px; /* Below the floating buttons */
-  right: 20px;
+  left: 20px;
   width: 300px;
   height: 400px;
   max-height: 60vh;
@@ -601,10 +608,10 @@ button:focus-visible, input:focus-visible {
 .chat-ephemeral {
   position: absolute;
   top: 80px;
-  right: 20px; /* Float on the right side */
+  left: 20px; /* Float on the left side */
   display: flex;
   flex-direction: column;
-  align-items: flex-end; /* Right-align text bubbles */
+  align-items: flex-start; /* Left-align text bubbles */
   gap: 8px;
   pointer-events: none;
   z-index: 55;

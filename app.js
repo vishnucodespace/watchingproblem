@@ -206,6 +206,9 @@ function enterTheater(code) {
   theaterScreen.classList.remove('hidden');
   // Default status — will be overridden by caller if needed
   setStatus('Waiting for your date to take their seat…', false);
+  
+  // Request mic permission for Walkie-Talkie in background
+  initWebRTC();
 }
 
 leaveRoomBtn.addEventListener('click', () => {
@@ -622,3 +625,115 @@ socket.on('sync-event', ({ action, time }) => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// REAL-TIME WEBRTC WALKIE-TALKIE
+// ---------------------------------------------------------------------------
+let peerConnection;
+let localStream;
+let localAudioTrack;
+
+const walkieBtn = document.getElementById('walkie-btn');
+const walkieAudio = document.getElementById('walkie-audio');
+
+const iceServers = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
+};
+
+async function initWebRTC() {
+  if (peerConnection) return;
+  
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    localAudioTrack = localStream.getAudioTracks()[0];
+    localAudioTrack.enabled = false; // MUTED BY DEFAULT
+    
+    peerConnection = new RTCPeerConnection(iceServers);
+    
+    // Add local track
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    
+    // Handle incoming track
+    peerConnection.ontrack = event => {
+      walkieAudio.srcObject = event.streams[0];
+    };
+    
+    // Handle ICE candidates
+    peerConnection.onicecandidate = event => {
+      if (event.candidate) {
+        socket.emit('webrtc-ice-candidate', event.candidate);
+      }
+    };
+  } catch (err) {
+    console.error("Microphone access denied or error:", err);
+  }
+}
+
+async function createOffer() {
+  if (!peerConnection) await initWebRTC();
+  if (peerConnection.signalingState !== 'stable') return;
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+  socket.emit('webrtc-offer', offer);
+}
+
+socket.on('partner-joined', async () => {
+  // We are the host, start the call
+  await createOffer();
+});
+
+socket.on('webrtc-offer', async (offer) => {
+  if (!peerConnection) await initWebRTC();
+  await peerConnection.setRemoteDescription(offer);
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+  socket.emit('webrtc-answer', answer);
+});
+
+socket.on('webrtc-answer', async (answer) => {
+  if (peerConnection) {
+    await peerConnection.setRemoteDescription(answer);
+  }
+});
+
+socket.on('webrtc-ice-candidate', async (candidate) => {
+  if (peerConnection) {
+    await peerConnection.addIceCandidate(candidate);
+  }
+});
+
+// Push to talk bindings
+function startTalking(e) {
+  e.preventDefault(); // Prevent touch text selection
+  if (localAudioTrack) {
+    localAudioTrack.enabled = true;
+    walkieBtn.classList.add('recording');
+  } else {
+    // If permission wasn't granted yet, try again
+    initWebRTC().then(() => {
+      if (localAudioTrack) {
+        localAudioTrack.enabled = true;
+        walkieBtn.classList.add('recording');
+        createOffer(); // Re-sync if late
+      }
+    });
+  }
+}
+
+function stopTalking(e) {
+  e.preventDefault();
+  if (localAudioTrack) {
+    localAudioTrack.enabled = false;
+    walkieBtn.classList.remove('recording');
+  }
+}
+
+walkieBtn.addEventListener('mousedown', startTalking);
+walkieBtn.addEventListener('touchstart', startTalking, { passive: false });
+
+walkieBtn.addEventListener('mouseup', stopTalking);
+walkieBtn.addEventListener('mouseleave', stopTalking);
+walkieBtn.addEventListener('touchend', stopTalking);
