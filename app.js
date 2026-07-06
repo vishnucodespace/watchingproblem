@@ -6,6 +6,14 @@ if (!myUserId) {
   myUserId = Math.random().toString(36).substring(2, 10);
   sessionStorage.setItem('tsos-user-id', myUserId);
 }
+let myMovieName = null;
+let partnerMovieName = null;
+
+function normalizeName(filename) {
+  if (!filename) return '';
+  return filename.toLowerCase().replace(/\.[a-z0-9]+$/i, '');
+}
+
 // ---- DOM refs ----
 const setupScreen = document.getElementById('setup-screen');
 const theaterScreen = document.getElementById('theater-screen');
@@ -399,6 +407,7 @@ async function removeQueueItem(index) {
     if (oldTrack) oldTrack.remove();
     
     currentQueueIndex = 0;
+    myMovieName = null;
     if (queuePanel) queuePanel.classList.add('hidden');
     if (queueToggleBtn) queueToggleBtn.classList.add('hidden');
     
@@ -527,6 +536,7 @@ async function loadVideoFromQueue(isResume = false) {
       queueToggleBtn.classList.add('hidden');
     }
     
+    myMovieName = file.name;
     socket.emit('movie-info', { name: file.name });
     updateQueueUIAfterLoad();
     
@@ -625,8 +635,30 @@ async function initSessionPersistence() {
 
 initSessionPersistence();
 
-socket.on('movie-info', (info) => {
-  setStatus(`Your date selected "${info.name}". Please select the file to continue.`, true);
+socket.on('movie-info', async (info) => {
+  if (info.name === "No file selected") {
+    partnerMovieName = null;
+    setStatus("Your date removed their movie.", false);
+    return;
+  }
+
+  partnerMovieName = info.name;
+  
+  if (myMovieName && normalizeName(myMovieName) !== normalizeName(partnerMovieName)) {
+    const matchIndex = movieQueue.findIndex(item => normalizeName(item.name) === normalizeName(partnerMovieName));
+    if (matchIndex !== -1 && matchIndex !== currentQueueIndex) {
+      currentQueueIndex = matchIndex;
+      await saveQueueState();
+      renderQueueUI();
+      await loadVideoFromQueue(false);
+      setStatus("Auto-switched to match your date.", true);
+    } else {
+      video.pause();
+      setStatus(`Your date selected "${info.name}". Please load this file to continue.`, false);
+    }
+  } else {
+    setStatus(`Your date loaded "${info.name}".`, true);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -818,6 +850,11 @@ socket.on('reaction', (emoji) => {
 // Removed broken fullscreen block.
 // ---- Outgoing: user-driven playback events ----
 video.addEventListener('play', () => {
+  if (myMovieName && partnerMovieName && normalizeName(myMovieName) !== normalizeName(partnerMovieName)) {
+    video.pause();
+    setStatus('Cannot play: Mismatched files. Please load the correct file.', false);
+    return;
+  }
   if (suppressEmit) return;
   socket.emit('sync-event', { action: 'play', time: video.currentTime });
 });
@@ -841,6 +878,9 @@ socket.on('sync-event', ({ action, time }) => {
   applyRemote(() => {
     switch (action) {
       case 'play':
+        if (myMovieName && partnerMovieName && normalizeName(myMovieName) !== normalizeName(partnerMovieName)) {
+          return; // Ignore incoming play if mismatched
+        }
         if (Math.abs(video.currentTime - time) > SEEK_THRESHOLD_SEC) {
           video.currentTime = time;
         }
