@@ -345,7 +345,17 @@ function renderQueueUI() {
     handleEl.className = 'queue-item-drag-handle';
     handleEl.textContent = '☰';
     
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'queue-item-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.title = 'Remove movie';
+    removeBtn.onclick = (e) => {
+      e.stopPropagation();
+      removeQueueItem(index);
+    };
+    
     li.appendChild(nameEl);
+    li.appendChild(removeBtn);
     li.appendChild(handleEl);
     
     li.addEventListener('dragstart', handleDragStart);
@@ -356,6 +366,52 @@ function renderQueueUI() {
     
     queueList.appendChild(li);
   });
+}
+
+async function removeQueueItem(index) {
+  movieQueue.splice(index, 1);
+  
+  if (movieQueue.length === 0) {
+    // Queue is empty, reset player
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    await removeSavedFiles();
+    sessionStorage.removeItem('tsos-video-time');
+    
+    const oldTrack = video.querySelector('track');
+    if (oldTrack) oldTrack.remove();
+    
+    currentQueueIndex = 0;
+    if (queuePanel) queuePanel.classList.add('hidden');
+    if (queueToggleBtn) queueToggleBtn.classList.add('hidden');
+    
+    noFilePlaceholder.classList.remove('hidden');
+    fileNameEl.textContent = "No file selected on this laptop yet.";
+    resumeFileBtn.classList.add('hidden');
+    
+    socket.emit('movie-info', { name: "No file selected" });
+  } else {
+    // If we removed the currently playing item
+    if (index === currentQueueIndex) {
+      if (currentQueueIndex >= movieQueue.length) {
+        currentQueueIndex = Math.max(0, movieQueue.length - 1);
+      }
+      await loadVideoFromQueue(false);
+    } 
+    // If we removed an item before the currently playing item
+    else if (index < currentQueueIndex) {
+      currentQueueIndex--;
+    }
+    await saveQueueState();
+    
+    if (movieQueue.length > 1 && queueToggleBtn) {
+      queueToggleBtn.textContent = `Queue (${currentQueueIndex + 1}/${movieQueue.length})`;
+    } else if (movieQueue.length <= 1 && queueToggleBtn) {
+      queueToggleBtn.classList.add('hidden');
+    }
+  }
+  renderQueueUI();
 }
 
 function updateQueueUIAfterLoad() {
@@ -446,8 +502,7 @@ async function loadVideoFromQueue(isResume = false) {
     noFilePlaceholder.classList.add('hidden');
     fileNameEl.textContent = file.name;
     resumeFileBtn.classList.add('hidden');
-    fileBtn.classList.add('hidden');
-    removeFileBtn.classList.remove('hidden');
+    // We intentionally do NOT hide fileBtn anymore, so users can keep appending to queue
     
     if (movieQueue.length > 1 && queueToggleBtn) {
       queueToggleBtn.classList.remove('hidden');
@@ -463,9 +518,7 @@ async function loadVideoFromQueue(isResume = false) {
       video.play().catch(() => {});
     }
   } catch (error) {
-    fileBtn.classList.add('hidden');
     resumeFileBtn.classList.remove('hidden');
-    removeFileBtn.classList.add('hidden');
     fileNameEl.textContent = `Movie saved. Click resume to watch.`;
     if (queueToggleBtn) queueToggleBtn.classList.add('hidden');
   }
@@ -478,11 +531,14 @@ fileBtn.addEventListener('click', async () => {
         multiple: true,
         types: [{ description: 'Video Files', accept: { 'video/*': ['.mp4', '.mkv', '.webm'] } }]
       });
-      movieQueue = handles;
-      currentQueueIndex = 0;
+      movieQueue.push(...handles);
+      // We do not reset currentQueueIndex to 0 here unless queue was empty
+      if (movieQueue.length === handles.length) {
+        currentQueueIndex = 0;
+        await loadVideoFromQueue();
+      }
       await saveQueueState();
       renderQueueUI();
-      await loadVideoFromQueue();
     } catch (err) {
       // User cancelled picking
     }
@@ -494,10 +550,13 @@ fileBtn.addEventListener('click', async () => {
 fallbackFileInput.addEventListener('change', () => {
   const files = Array.from(fallbackFileInput.files);
   if (files.length > 0) {
-    movieQueue = files;
-    currentQueueIndex = 0;
+    const wasEmpty = (movieQueue.length === 0);
+    movieQueue.push(...files);
+    if (wasEmpty) {
+      currentQueueIndex = 0;
+      loadVideoFromQueue();
+    }
     renderQueueUI();
-    loadVideoFromQueue();
   }
 });
 
@@ -509,31 +568,7 @@ video.addEventListener('ended', () => {
   }
 });
 
-removeFileBtn.addEventListener('click', async () => {
-  video.pause();
-  video.removeAttribute('src');
-  video.load();
-  await removeSavedFiles();
-  sessionStorage.removeItem('tsos-video-time');
-  
-  const oldTrack = video.querySelector('track');
-  if (oldTrack) oldTrack.remove();
-  
-  movieQueue = [];
-  currentQueueIndex = 0;
-  if (queuePanel) queuePanel.classList.add('hidden');
-  if (queueToggleBtn) queueToggleBtn.classList.add('hidden');
-  renderQueueUI();
-  
-  noFilePlaceholder.classList.remove('hidden');
-  fileNameEl.textContent = "No file selected on this laptop yet.";
-  removeFileBtn.classList.add('hidden');
-  removeSubBtn.classList.add('hidden');
-  fileBtn.classList.remove('hidden');
-  resumeFileBtn.classList.add('hidden');
-  
-  socket.emit('movie-info', { name: "No file selected" });
-});
+// Old removeFileBtn listener deleted
 
 resumeFileBtn.addEventListener('click', async () => {
   if (movieQueue.length > 0 && movieQueue[currentQueueIndex].requestPermission) {

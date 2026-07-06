@@ -800,6 +800,29 @@ button:focus-visible, input:focus-visible {
   flex: 1;
 }
 
+.queue-item-remove {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 8px;
+  transition: color 0.15s ease, transform 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.queue-item-remove:hover {
+  color: var(--accent-rose);
+  transform: scale(1.2);
+}
+
+.queue-item-remove:active {
+  transform: scale(0.9);
+}
+
 .queue-item-drag-handle {
   color: var(--ink-muted);
   font-size: 14px;
