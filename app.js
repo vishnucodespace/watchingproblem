@@ -984,38 +984,44 @@ socket.on('webrtc-ice-candidate', async (candidate) => {
   }
 });
 
-// Push to talk bindings
-function startTalking(e) {
+// Mic Toggle bindings
+let isMicOn = false;
+
+function toggleMic(e) {
   e.preventDefault(); // Prevent touch text selection
-  if (localAudioTrack) {
-    localAudioTrack.enabled = true;
-    walkieBtn.classList.add('recording');
-  } else {
+  
+  if (!localAudioTrack) {
     // If permission wasn't granted yet, try again
     initWebRTC().then(() => {
       if (localAudioTrack) {
-        localAudioTrack.enabled = true;
-        walkieBtn.classList.add('recording');
         createOffer(); // Re-sync if late
+        setMicState(true);
       }
     });
+    return;
   }
+  
+  setMicState(!isMicOn);
 }
 
-function stopTalking(e) {
-  e.preventDefault();
+function setMicState(state) {
+  isMicOn = state;
   if (localAudioTrack) {
-    localAudioTrack.enabled = false;
+    localAudioTrack.enabled = isMicOn;
+  }
+  
+  if (isMicOn) {
+    walkieBtn.classList.add('recording');
+    walkieBtn.classList.remove('mic-off');
+  } else {
     walkieBtn.classList.remove('recording');
+    walkieBtn.classList.add('mic-off');
   }
 }
 
-walkieBtn.addEventListener('mousedown', startTalking);
-walkieBtn.addEventListener('touchstart', startTalking, { passive: false });
-
-walkieBtn.addEventListener('mouseup', stopTalking);
-walkieBtn.addEventListener('mouseleave', stopTalking);
-walkieBtn.addEventListener('touchend', stopTalking);
+// Initial state
+walkieBtn.classList.add('mic-off');
+walkieBtn.addEventListener('click', toggleMic);
 
 // ---------------------------------------------------------------------------
 // AUDIO EFFECTS

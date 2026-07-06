@@ -495,6 +495,25 @@ button:focus-visible, input:focus-visible {
   border-color: #F43F5E;
   box-shadow: 0 0 15px rgba(244, 63, 94, 0.6);
   color: white;
+  animation: pulse 1s infinite alternate;
+}
+
+.icon-btn.mic-off {
+  opacity: 0.6;
+  position: relative;
+}
+
+.icon-btn.mic-off::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 20%;
+  width: 60%;
+  height: 2px;
+  background-color: var(--accent-rose);
+  transform: translateY(-50%) rotate(45deg);
+  border-radius: 2px;
+  z-index: 10;
 }
 
 /* Chat Panel */
