@@ -340,6 +340,15 @@ function renderQueueUI() {
     const nameEl = document.createElement('span');
     nameEl.className = 'queue-item-name';
     nameEl.textContent = item.name;
+    nameEl.title = 'Click to play';
+    nameEl.onclick = async () => {
+      if (currentQueueIndex !== index) {
+        currentQueueIndex = index;
+        await saveQueueState();
+        renderQueueUI();
+        await loadVideoFromQueue();
+      }
+    };
     
     const handleEl = document.createElement('span');
     handleEl.className = 'queue-item-drag-handle';
@@ -617,7 +626,7 @@ async function initSessionPersistence() {
 initSessionPersistence();
 
 socket.on('movie-info', (info) => {
-  setStatus(`Your date loaded "${info.name}" — make sure yours matches.`, true);
+  setStatus(`Your date selected "${info.name}". Please select the file to continue.`, true);
 });
 
 // ---------------------------------------------------------------------------

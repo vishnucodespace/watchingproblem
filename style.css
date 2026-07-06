@@ -798,6 +798,12 @@ button:focus-visible, input:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.queue-item-name:hover {
+  color: var(--accent-gold);
 }
 
 .queue-item-remove {
