@@ -260,10 +260,14 @@ leaveRoomBtn.addEventListener('click', () => {
 });
 
 socket.on('partner-joined', (activeSeats) => {
-  if (activeSeats === 2) setStatus('Both seats filled. Enjoy the show.', true);
+  if (activeSeats === 2) {
+    setStatus('Both seats filled. Enjoy the show.', true);
+    playSound('join');
+  }
 });
 socket.on('partner-left', () => {
   setStatus("Your date's stepped into the lobby…", false);
+  playSound('leave');
   if (!video.paused) {
     video.pause();
     setStatus("Partner left. Pausing movie...", false);
@@ -781,3 +785,48 @@ walkieBtn.addEventListener('touchstart', startTalking, { passive: false });
 walkieBtn.addEventListener('mouseup', stopTalking);
 walkieBtn.addEventListener('mouseleave', stopTalking);
 walkieBtn.addEventListener('touchend', stopTalking);
+
+// ---------------------------------------------------------------------------
+// AUDIO EFFECTS
+// ---------------------------------------------------------------------------
+let audioCtx = null;
+function playSound(type) {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    if (type === 'join') {
+      // Pleasant ascending chime
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+      oscillator.frequency.exponentialRampToValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+      gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + 0.5);
+    } else if (type === 'leave') {
+      // Soft descending tone
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(329.63, audioCtx.currentTime); // E4
+      oscillator.frequency.exponentialRampToValueAtTime(261.63, audioCtx.currentTime + 0.2); // C4
+      gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + 0.5);
+    }
+  } catch(e) {
+    console.error("Audio playback failed", e);
+  }
+}
+
