@@ -37,6 +37,8 @@ const chatInput = document.getElementById('chat-input');
 const chatSendBtn = document.getElementById('chat-send-btn');
 const chatEphemeral = document.getElementById('chat-ephemeral');
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
+const forceSyncBtn = document.getElementById('force-sync-btn');
+const syncDriftIndicator = document.getElementById('sync-drift-indicator');
 const reactionBtns = {
   '❤️': document.getElementById('reaction-heart-btn'),
   '😂': document.getElementById('reaction-laugh-btn'),
@@ -66,12 +68,49 @@ player.on('ready', () => {
   }
 });
 
-// Periodically save the current time to sessionStorage so it survives refreshes
+// Periodically save the current time to sessionStorage so it survives refreshes, and ping partner
 setInterval(() => {
   if (video.readyState > 0) {
     sessionStorage.setItem('tsos-video-time', video.currentTime);
+    if (currentRoomCode) {
+      socket.emit('time-ping', video.currentTime);
+    }
   }
 }, 1000);
+
+let driftTimer = null;
+socket.on('time-ping', (partnerTime) => {
+  if (video.readyState > 0) {
+    const drift = Math.abs(video.currentTime - partnerTime);
+    if (drift > 0.5) {
+      syncDriftIndicator.textContent = `Drift: ${drift.toFixed(1)}s`;
+      syncDriftIndicator.classList.remove('hidden');
+      
+      clearTimeout(driftTimer);
+      driftTimer = setTimeout(() => {
+        syncDriftIndicator.classList.add('hidden');
+      }, 3000);
+    } else {
+      syncDriftIndicator.classList.add('hidden');
+    }
+  }
+});
+
+if (forceSyncBtn) {
+  forceSyncBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (currentRoomCode && video.readyState > 0) {
+      socket.emit('sync-event', { action: 'seek', time: video.currentTime });
+      if (!video.paused) {
+        socket.emit('sync-event', { action: 'play', time: video.currentTime });
+      } else {
+        socket.emit('sync-event', { action: 'pause', time: video.currentTime });
+      }
+      syncDriftIndicator.classList.add('hidden');
+      spawnReaction('🔄');
+    }
+  });
+}
 
 // ---- IndexedDB Helper for File Handle ----
 const dbName = 'tsos-db';
@@ -274,10 +313,7 @@ async function loadVideoFromHandle(handle) {
   try {
     const file = await handle.getFile();
     
-    // Warn user if it's an MKV or AVI file
-    if (file.name.toLowerCase().endsWith('.mkv') || file.name.toLowerCase().endsWith('.avi')) {
-      alert("⚠️ WARNING: Web browsers do not natively support .mkv or .avi video formats! You will likely hear audio but see no video.\n\nPlease convert the movie to an .mp4 file using a tool like Handbrake before watching.");
-    }
+
 
     const url = URL.createObjectURL(file);
     video.src = url;
@@ -325,10 +361,7 @@ fileBtn.addEventListener('click', async () => {
 fallbackFileInput.addEventListener('change', () => {
   const file = fallbackFileInput.files[0];
   if (file) {
-    // Warn user if it's an MKV or AVI file
-    if (file.name.toLowerCase().endsWith('.mkv') || file.name.toLowerCase().endsWith('.avi')) {
-      alert("⚠️ WARNING: Web browsers do not natively support .mkv or .avi video formats! You will likely hear audio but see no video.\n\nPlease convert the movie to an .mp4 file using a tool like Handbrake before watching.");
-    }
+
 
     const url = URL.createObjectURL(file);
     video.src = url;

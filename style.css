@@ -640,3 +640,29 @@ button:focus-visible, input:focus-visible {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* Sync Drift Indicator */
+.sync-drift {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(244, 63, 94, 0.85);
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(244, 63, 94, 0.4);
+  z-index: 55;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(4px);
+  transition: opacity 0.3s ease;
+}
+
+.sync-drift.hidden {
+  opacity: 0;
+  pointer-events: none;
+}

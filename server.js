@@ -110,6 +110,13 @@ io.on('connection', (socket) => {
     socket.to(room).emit('sync-event', payload);
   });
 
+  socket.on('time-ping', (time) => {
+    const room = socket.data.room;
+    if (room && typeof time === 'number') {
+      socket.to(room).emit('time-ping', time);
+    }
+  });
+
   socket.on('movie-info', (info) => {
     const room = socket.data.room;
     if (!room) return;
