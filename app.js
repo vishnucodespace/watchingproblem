@@ -1078,8 +1078,10 @@ let isDrawingMode = false;
 let isDrawing = false;
 let lastDrawPos = null;
 let drawnSegments = []; 
+let activeStrokeIds = new Map(); // strokeId -> finishTime (null if still drawing, Date.now() if finished)
+let currentStrokeId = null;
 
-const DRAW_COLOR = '#F59E0B'; // Gold color to match theme
+const DRAW_COLOR = '#F43F5E'; // Glowing Red
 const FADE_DURATION = 3000; // 3 seconds before strokes disappear
 
 // Auto-resize canvas to always match player size (crucial for fullscreen)
@@ -1128,6 +1130,10 @@ function handleDrawStart(e) {
   e.preventDefault(); // Stop text selection/scrolling
   isDrawing = true;
   lastDrawPos = getCanvasPos(e);
+  
+  currentStrokeId = Math.random().toString(36).substr(2, 9);
+  activeStrokeIds.set(currentStrokeId, null);
+  socket.emit('draw-start', currentStrokeId);
 }
 
 function handleDrawMove(e) {
@@ -1136,7 +1142,7 @@ function handleDrawMove(e) {
   const currentPos = getCanvasPos(e);
   
   if (lastDrawPos) {
-    const segment = { p1: lastDrawPos, p2: currentPos, time: Date.now(), color: DRAW_COLOR };
+    const segment = { p1: lastDrawPos, p2: currentPos, strokeId: currentStrokeId, color: DRAW_COLOR };
     drawnSegments.push(segment);
     socket.emit('draw-segment', segment);
   }
@@ -1144,9 +1150,15 @@ function handleDrawMove(e) {
 }
 
 function handleDrawEnd(e) {
-  if (!isDrawingMode) return;
+  if (!isDrawingMode || !isDrawing) return;
   isDrawing = false;
   lastDrawPos = null;
+  
+  if (currentStrokeId) {
+    activeStrokeIds.set(currentStrokeId, Date.now());
+    socket.emit('draw-end', currentStrokeId);
+    currentStrokeId = null;
+  }
 }
 
 if (drawingCanvas) {
@@ -1159,9 +1171,16 @@ if (drawingCanvas) {
   drawingCanvas.addEventListener('touchend', handleDrawEnd);
 }
 
+socket.on('draw-start', (id) => {
+  activeStrokeIds.set(id, null);
+});
+
 socket.on('draw-segment', (segment) => {
-  segment.time = Date.now(); // Reset time on our end so it fades properly here
   drawnSegments.push(segment);
+});
+
+socket.on('draw-end', (id) => {
+  activeStrokeIds.set(id, Date.now());
 });
 
 // Render Loop for Ephemeral Fading
@@ -1171,15 +1190,29 @@ function renderDrawings() {
   ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
   
   // Clean up old segments
-  drawnSegments = drawnSegments.filter(seg => now - seg.time < FADE_DURATION);
+  drawnSegments = drawnSegments.filter(seg => {
+    const finishTime = activeStrokeIds.get(seg.strokeId);
+    if (finishTime === null) return true; // Still actively being drawn
+    if (!finishTime) return false; // Unknown stroke (shouldn't happen)
+    return now - finishTime < FADE_DURATION;
+  });
   
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.lineWidth = 4;
   
+  // To make it truly "glowing red", we can add a subtle shadow
+  ctx.shadowColor = DRAW_COLOR;
+  ctx.shadowBlur = 10;
+  
   drawnSegments.forEach(seg => {
-    const age = now - seg.time;
-    const alpha = Math.max(0, 1 - (age / FADE_DURATION));
+    const finishTime = activeStrokeIds.get(seg.strokeId);
+    let alpha = 1.0;
+    
+    if (finishTime !== null) {
+      const age = now - finishTime;
+      alpha = Math.max(0, 1 - (age / FADE_DURATION));
+    }
     
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = seg.color;
@@ -1190,7 +1223,9 @@ function renderDrawings() {
     ctx.stroke();
   });
   
+  // Reset context states
   ctx.globalAlpha = 1.0;
+  ctx.shadowBlur = 0;
   requestAnimationFrame(renderDrawings);
 }
 

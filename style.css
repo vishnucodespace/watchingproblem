@@ -533,9 +533,9 @@ button:focus-visible, input:focus-visible {
 }
 
 .icon-btn.draw-active {
-  background: rgba(245, 158, 11, 0.8); /* Gold */
-  border-color: var(--accent-gold);
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.6);
+  background: rgba(244, 63, 94, 0.8); /* Red */
+  border-color: #F43F5E;
+  box-shadow: 0 0 15px rgba(244, 63, 94, 0.6);
   color: white;
   animation: pulse 1s infinite alternate;
 }
