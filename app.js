@@ -83,7 +83,7 @@ socket.on('time-ping', (partnerTime) => {
   if (video.readyState > 0) {
     const drift = Math.abs(video.currentTime - partnerTime);
     if (drift > 0.5) {
-      syncDriftIndicator.textContent = `Drift: ${drift.toFixed(1)}s`;
+      document.getElementById('sync-drift-text').textContent = `Drift: ${drift.toFixed(1)}s`;
       syncDriftIndicator.classList.remove('hidden');
       
       clearTimeout(driftTimer);
