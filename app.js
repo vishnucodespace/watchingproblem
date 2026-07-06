@@ -366,6 +366,13 @@ function renderQueueUI() {
     
     queueList.appendChild(li);
   });
+  
+  if (movieQueue.length > 1 && queueToggleBtn) {
+    queueToggleBtn.classList.remove('hidden');
+    queueToggleBtn.textContent = `Queue (${currentQueueIndex + 1}/${movieQueue.length})`;
+  } else if (movieQueue.length <= 1 && queueToggleBtn) {
+    queueToggleBtn.classList.add('hidden');
+  }
 }
 
 async function removeQueueItem(index) {
