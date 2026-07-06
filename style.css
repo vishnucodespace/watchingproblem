@@ -516,6 +516,30 @@ button:focus-visible, input:focus-visible {
   z-index: 10;
 }
 
+/* Drawing Canvas Overlay */
+.drawing-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 15;
+  pointer-events: none; /* Let clicks pass through to video by default */
+}
+
+.drawing-canvas.active {
+  pointer-events: auto; /* Intercept clicks when drawing mode is on */
+  cursor: crosshair;
+}
+
+.icon-btn.draw-active {
+  background: rgba(245, 158, 11, 0.8); /* Gold */
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.6);
+  color: white;
+  animation: pulse 1s infinite alternate;
+}
+
 /* Chat Panel */
 .chat-panel {
   position: absolute;

@@ -47,6 +47,9 @@ const chatEphemeral = document.getElementById('chat-ephemeral');
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 const forceSyncBtn = document.getElementById('force-sync-btn');
 const syncDriftIndicator = document.getElementById('sync-drift-indicator');
+const drawBtn = document.getElementById('draw-btn');
+const drawingCanvas = document.getElementById('drawing-canvas');
+const ctx = drawingCanvas.getContext('2d');
 const reactionBtns = {
   '❤️': document.getElementById('reaction-heart-btn'),
   '😂': document.getElementById('reaction-laugh-btn'),
@@ -70,6 +73,7 @@ player.on('ready', () => {
   const interactionOverlay = document.getElementById('interaction-overlay');
   
   if (plyrContainer) {
+    if (drawingCanvas) plyrContainer.appendChild(drawingCanvas); // Ensure canvas scales with player
     if (reactionsLayer) plyrContainer.appendChild(reactionsLayer);
     if (chatEphemeral) plyrContainer.appendChild(chatEphemeral);
     if (interactionOverlay) plyrContainer.appendChild(interactionOverlay);
@@ -1067,3 +1071,129 @@ function playSound(type) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// EPHEMERAL DRAWING OVERLAY
+// ---------------------------------------------------------------------------
+let isDrawingMode = false;
+let isDrawing = false;
+let lastDrawPos = null;
+let drawnSegments = []; 
+
+const DRAW_COLOR = '#F59E0B'; // Gold color to match theme
+const FADE_DURATION = 3000; // 3 seconds before strokes disappear
+
+// Auto-resize canvas to always match player size (crucial for fullscreen)
+const resizeObserver = new ResizeObserver(entries => {
+  for (let entry of entries) {
+    if (drawingCanvas) {
+      drawingCanvas.width = entry.contentRect.width;
+      drawingCanvas.height = entry.contentRect.height;
+    }
+  }
+});
+if (drawingCanvas) resizeObserver.observe(drawingCanvas);
+
+if (drawBtn) {
+  drawBtn.addEventListener('click', () => {
+    isDrawingMode = !isDrawingMode;
+    if (isDrawingMode) {
+      drawBtn.classList.add('draw-active');
+      drawingCanvas.classList.add('active');
+    } else {
+      drawBtn.classList.remove('draw-active');
+      drawingCanvas.classList.remove('active');
+    }
+  });
+}
+
+function getCanvasPos(e) {
+  const rect = drawingCanvas.getBoundingClientRect();
+  let clientX, clientY;
+  if (e.touches && e.touches.length > 0) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  // Return normalized coordinates (0 to 1) so it works across different screen sizes
+  return {
+    x: (clientX - rect.left) / rect.width,
+    y: (clientY - rect.top) / rect.height
+  };
+}
+
+function handleDrawStart(e) {
+  if (!isDrawingMode) return;
+  e.preventDefault(); // Stop text selection/scrolling
+  isDrawing = true;
+  lastDrawPos = getCanvasPos(e);
+}
+
+function handleDrawMove(e) {
+  if (!isDrawing || !isDrawingMode) return;
+  e.preventDefault();
+  const currentPos = getCanvasPos(e);
+  
+  if (lastDrawPos) {
+    const segment = { p1: lastDrawPos, p2: currentPos, time: Date.now(), color: DRAW_COLOR };
+    drawnSegments.push(segment);
+    socket.emit('draw-segment', segment);
+  }
+  lastDrawPos = currentPos;
+}
+
+function handleDrawEnd(e) {
+  if (!isDrawingMode) return;
+  isDrawing = false;
+  lastDrawPos = null;
+}
+
+if (drawingCanvas) {
+  drawingCanvas.addEventListener('mousedown', handleDrawStart);
+  drawingCanvas.addEventListener('mousemove', handleDrawMove);
+  drawingCanvas.addEventListener('mouseup', handleDrawEnd);
+  drawingCanvas.addEventListener('mouseleave', handleDrawEnd);
+  drawingCanvas.addEventListener('touchstart', handleDrawStart, { passive: false });
+  drawingCanvas.addEventListener('touchmove', handleDrawMove, { passive: false });
+  drawingCanvas.addEventListener('touchend', handleDrawEnd);
+}
+
+socket.on('draw-segment', (segment) => {
+  segment.time = Date.now(); // Reset time on our end so it fades properly here
+  drawnSegments.push(segment);
+});
+
+// Render Loop for Ephemeral Fading
+function renderDrawings() {
+  if (!ctx || !drawingCanvas) return;
+  const now = Date.now();
+  ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+  
+  // Clean up old segments
+  drawnSegments = drawnSegments.filter(seg => now - seg.time < FADE_DURATION);
+  
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 4;
+  
+  drawnSegments.forEach(seg => {
+    const age = now - seg.time;
+    const alpha = Math.max(0, 1 - (age / FADE_DURATION));
+    
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = seg.color;
+    
+    ctx.beginPath();
+    ctx.moveTo(seg.p1.x * drawingCanvas.width, seg.p1.y * drawingCanvas.height);
+    ctx.lineTo(seg.p2.x * drawingCanvas.width, seg.p2.y * drawingCanvas.height);
+    ctx.stroke();
+  });
+  
+  ctx.globalAlpha = 1.0;
+  requestAnimationFrame(renderDrawings);
+}
+
+if (drawingCanvas) {
+  requestAnimationFrame(renderDrawings);
+}

@@ -169,6 +169,11 @@ io.on('connection', (socket) => {
     if (code) socket.to(code).emit('reaction', emoji);
   });
 
+  socket.on('draw-segment', (segment) => {
+    const code = socket.data.room;
+    if (code) socket.to(code).emit('draw-segment', segment);
+  });
+
   socket.on('disconnect', () => {
     const code = socket.data.room;
     const userId = socket.data.userId;
