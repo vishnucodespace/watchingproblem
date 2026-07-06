@@ -169,19 +169,9 @@ io.on('connection', (socket) => {
     if (code) socket.to(code).emit('reaction', emoji);
   });
 
-  socket.on('draw-start', (id) => {
-    const code = socket.data.room;
-    if (code) socket.to(code).emit('draw-start', id);
-  });
-
   socket.on('draw-segment', (segment) => {
     const code = socket.data.room;
     if (code) socket.to(code).emit('draw-segment', segment);
-  });
-
-  socket.on('draw-end', (id) => {
-    const code = socket.data.room;
-    if (code) socket.to(code).emit('draw-end', id);
   });
 
   socket.on('disconnect', () => {

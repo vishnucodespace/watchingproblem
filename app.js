@@ -1078,11 +1078,15 @@ let isDrawingMode = false;
 let isDrawing = false;
 let lastDrawPos = null;
 let drawnSegments = []; 
-let activeStrokeIds = new Map(); // strokeId -> finishTime (null if still drawing, Date.now() if finished)
-let currentStrokeId = null;
+let lastDrawActivity = Date.now();
 
 const DRAW_COLOR = '#F43F5E'; // Glowing Red
-const FADE_DURATION = 3000; // 3 seconds before strokes disappear
+const IDLE_TIMEOUT = 3000; // 3 seconds of idle time before fading starts
+const FADE_OUT_TIME = 1000; // 1 second to actually fade out completely
+
+function pokeDrawing() {
+  lastDrawActivity = Date.now();
+}
 
 // Auto-resize canvas to always match player size (crucial for fullscreen)
 const resizeObserver = new ResizeObserver(entries => {
@@ -1130,10 +1134,7 @@ function handleDrawStart(e) {
   e.preventDefault(); // Stop text selection/scrolling
   isDrawing = true;
   lastDrawPos = getCanvasPos(e);
-  
-  currentStrokeId = Math.random().toString(36).substr(2, 9);
-  activeStrokeIds.set(currentStrokeId, null);
-  socket.emit('draw-start', currentStrokeId);
+  pokeDrawing();
 }
 
 function handleDrawMove(e) {
@@ -1142,9 +1143,10 @@ function handleDrawMove(e) {
   const currentPos = getCanvasPos(e);
   
   if (lastDrawPos) {
-    const segment = { p1: lastDrawPos, p2: currentPos, strokeId: currentStrokeId, color: DRAW_COLOR };
+    const segment = { p1: lastDrawPos, p2: currentPos, color: DRAW_COLOR };
     drawnSegments.push(segment);
     socket.emit('draw-segment', segment);
+    pokeDrawing();
   }
   lastDrawPos = currentPos;
 }
@@ -1153,12 +1155,7 @@ function handleDrawEnd(e) {
   if (!isDrawingMode || !isDrawing) return;
   isDrawing = false;
   lastDrawPos = null;
-  
-  if (currentStrokeId) {
-    activeStrokeIds.set(currentStrokeId, Date.now());
-    socket.emit('draw-end', currentStrokeId);
-    currentStrokeId = null;
-  }
+  pokeDrawing();
 }
 
 if (drawingCanvas) {
@@ -1171,16 +1168,9 @@ if (drawingCanvas) {
   drawingCanvas.addEventListener('touchend', handleDrawEnd);
 }
 
-socket.on('draw-start', (id) => {
-  activeStrokeIds.set(id, null);
-});
-
 socket.on('draw-segment', (segment) => {
   drawnSegments.push(segment);
-});
-
-socket.on('draw-end', (id) => {
-  activeStrokeIds.set(id, Date.now());
+  pokeDrawing();
 });
 
 // Render Loop for Ephemeral Fading
@@ -1189,43 +1179,41 @@ function renderDrawings() {
   const now = Date.now();
   ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
   
-  // Clean up old segments
-  drawnSegments = drawnSegments.filter(seg => {
-    const finishTime = activeStrokeIds.get(seg.strokeId);
-    if (finishTime === null) return true; // Still actively being drawn
-    if (!finishTime) return false; // Unknown stroke (shouldn't happen)
-    return now - finishTime < FADE_DURATION;
-  });
+  const idleTime = now - lastDrawActivity;
   
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = 4;
+  if (idleTime > IDLE_TIMEOUT + FADE_OUT_TIME) {
+    drawnSegments = [];
+    requestAnimationFrame(renderDrawings);
+    return;
+  }
   
-  // To make it truly "glowing red", we can add a subtle shadow
-  ctx.shadowColor = DRAW_COLOR;
-  ctx.shadowBlur = 10;
+  let alpha = 1.0;
+  if (idleTime > IDLE_TIMEOUT) {
+    alpha = Math.max(0, 1.0 - ((idleTime - IDLE_TIMEOUT) / FADE_OUT_TIME));
+  }
   
-  drawnSegments.forEach(seg => {
-    const finishTime = activeStrokeIds.get(seg.strokeId);
-    let alpha = 1.0;
+  if (drawnSegments.length > 0) {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
     
-    if (finishTime !== null) {
-      const age = now - finishTime;
-      alpha = Math.max(0, 1 - (age / FADE_DURATION));
-    }
-    
+    ctx.shadowColor = DRAW_COLOR;
+    ctx.shadowBlur = 10;
     ctx.globalAlpha = alpha;
-    ctx.strokeStyle = seg.color;
     
-    ctx.beginPath();
-    ctx.moveTo(seg.p1.x * drawingCanvas.width, seg.p1.y * drawingCanvas.height);
-    ctx.lineTo(seg.p2.x * drawingCanvas.width, seg.p2.y * drawingCanvas.height);
-    ctx.stroke();
-  });
+    drawnSegments.forEach(seg => {
+      ctx.strokeStyle = seg.color;
+      ctx.beginPath();
+      ctx.moveTo(seg.p1.x * drawingCanvas.width, seg.p1.y * drawingCanvas.height);
+      ctx.lineTo(seg.p2.x * drawingCanvas.width, seg.p2.y * drawingCanvas.height);
+      ctx.stroke();
+    });
+    
+    // Reset context states
+    ctx.globalAlpha = 1.0;
+    ctx.shadowBlur = 0;
+  }
   
-  // Reset context states
-  ctx.globalAlpha = 1.0;
-  ctx.shadowBlur = 0;
   requestAnimationFrame(renderDrawings);
 }
 
