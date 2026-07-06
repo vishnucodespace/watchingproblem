@@ -125,6 +125,17 @@
         </div>
       </div>
 
+      <!-- Queue Panel (Hidden by default) -->
+      <div id="queue-panel" class="queue-panel hidden">
+        <div class="queue-header">
+          <h3>Up Next</h3>
+          <button id="queue-close-btn" class="icon-btn" style="width:28px;height:28px;font-size:12px;">✕</button>
+        </div>
+        <ul id="queue-list" class="queue-list">
+          <!-- Draggable items injected here -->
+        </ul>
+      </div>
+
       <!-- Hidden audio element for WebRTC Walkie-Talkie -->
       <audio id="walkie-audio" autoplay hidden></audio>
     </div>
@@ -132,12 +143,12 @@
 
   <footer class="reel-bar">
     <button id="file-btn" class="btn btn-outline file-btn">
-      Load your reel
+      Load Movie(s)
     </button>
     <button id="remove-file-btn" class="btn btn-outline file-btn hidden" style="border-color: var(--accent-rose); color: var(--accent-rose);">
       Remove Movie
     </button>
-    <input id="fallback-file-input" type="file" accept="video/*" hidden />
+    <input id="fallback-file-input" type="file" accept="video/*" multiple hidden />
     
     <!-- A hidden button shown only when we have a saved file handle but need permission to read it -->
     <button id="resume-file-btn" class="btn btn-gold file-btn hidden">
@@ -152,6 +163,9 @@
     </button>
     <input id="sub-input" type="file" accept=".srt,.vtt" hidden />
     
+    <button id="queue-toggle-btn" class="btn btn-outline file-btn hidden" style="margin-left: auto;">
+      Queue (1)
+    </button>
     <span id="file-name" class="file-name">No file selected on this laptop yet.</span>
   </footer>
 </main>

@@ -310,23 +310,137 @@ function setStatus(text, connected) {
 }
 
 // ---------------------------------------------------------------------------
-// Local file loading using File System Access API (persists across refresh)
+// Local file loading & Queue Management
 // ---------------------------------------------------------------------------
+let movieQueue = []; // Array of file handles or file objects
+let currentQueueIndex = 0;
 
-async function loadVideoFromHandle(handle) {
-  try {
-    const file = await handle.getFile();
+const queueToggleBtn = document.getElementById('queue-toggle-btn');
+const queuePanel = document.getElementById('queue-panel');
+const queueCloseBtn = document.getElementById('queue-close-btn');
+const queueList = document.getElementById('queue-list');
+
+if (queueToggleBtn) queueToggleBtn.addEventListener('click', () => queuePanel.classList.toggle('hidden'));
+if (queueCloseBtn) queueCloseBtn.addEventListener('click', () => queuePanel.classList.add('hidden'));
+
+async function saveQueueState() {
+  const db = await getDB();
+  db.transaction(storeName, 'readwrite').objectStore(storeName).put({ queue: movieQueue, index: currentQueueIndex }, 'movie');
+}
+
+function renderQueueUI() {
+  if (!queueList) return;
+  queueList.innerHTML = '';
+  movieQueue.forEach((item, index) => {
+    const li = document.createElement('li');
+    li.className = 'queue-item' + (index === currentQueueIndex ? ' active-item' : '');
+    li.draggable = true;
+    li.dataset.index = index;
     
+    const nameEl = document.createElement('span');
+    nameEl.className = 'queue-item-name';
+    nameEl.textContent = item.name;
+    
+    const handleEl = document.createElement('span');
+    handleEl.className = 'queue-item-drag-handle';
+    handleEl.textContent = '☰';
+    
+    li.appendChild(nameEl);
+    li.appendChild(handleEl);
+    
+    li.addEventListener('dragstart', handleDragStart);
+    li.addEventListener('dragover', handleDragOver);
+    li.addEventListener('drop', handleDrop);
+    li.addEventListener('dragenter', handleDragEnter);
+    li.addEventListener('dragleave', handleDragLeave);
+    
+    queueList.appendChild(li);
+  });
+}
 
+function updateQueueUIAfterLoad() {
+  if (!queueList) return;
+  const items = queueList.querySelectorAll('.queue-item');
+  items.forEach((item, index) => {
+    if (index === currentQueueIndex) {
+      item.classList.add('active-item');
+    } else {
+      item.classList.remove('active-item');
+    }
+  });
+}
 
+let draggedItemIndex = null;
+function handleDragStart(e) {
+  draggedItemIndex = parseInt(e.currentTarget.dataset.index);
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => e.currentTarget.classList.add('dragging'), 0);
+}
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+function handleDragEnter(e) {
+  e.preventDefault();
+  const li = e.currentTarget;
+  if (parseInt(li.dataset.index) !== draggedItemIndex) {
+    li.classList.add('drag-over');
+  }
+}
+function handleDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+function handleDrop(e) {
+  e.stopPropagation();
+  const li = e.currentTarget;
+  li.classList.remove('drag-over');
+  document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('dragging'));
+  
+  const targetIndex = parseInt(li.dataset.index);
+  if (draggedItemIndex !== null && draggedItemIndex !== targetIndex) {
+    const draggedItem = movieQueue.splice(draggedItemIndex, 1)[0];
+    movieQueue.splice(targetIndex, 0, draggedItem);
+    
+    if (currentQueueIndex === draggedItemIndex) {
+      currentQueueIndex = targetIndex;
+    } else if (draggedItemIndex < currentQueueIndex && targetIndex >= currentQueueIndex) {
+      currentQueueIndex--;
+    } else if (draggedItemIndex > currentQueueIndex && targetIndex <= currentQueueIndex) {
+      currentQueueIndex++;
+    }
+    
+    saveQueueState();
+    renderQueueUI();
+    
+    if (movieQueue.length > 1 && queueToggleBtn) {
+      queueToggleBtn.textContent = `Queue (${currentQueueIndex + 1}/${movieQueue.length})`;
+    }
+  }
+}
+
+async function loadVideoFromQueue(isResume = false) {
+  if (movieQueue.length === 0 || currentQueueIndex >= movieQueue.length) return;
+  
+  const item = movieQueue[currentQueueIndex];
+  let file;
+  try {
+    if (item.getFile) {
+      file = await item.getFile();
+    } else {
+      file = item;
+    }
+    
     const url = URL.createObjectURL(file);
     video.src = url;
     video.load();
     
-    // Restore time if we have it
-    const savedTime = sessionStorage.getItem('tsos-video-time');
-    if (savedTime) {
-      video.currentTime = parseFloat(savedTime);
+    if (isResume) {
+      const savedTime = sessionStorage.getItem('tsos-video-time');
+      if (savedTime) {
+        video.currentTime = parseFloat(savedTime);
+      }
+    } else {
+      sessionStorage.setItem('tsos-video-time', '0');
     }
     
     noFilePlaceholder.classList.add('hidden');
@@ -334,47 +448,64 @@ async function loadVideoFromHandle(handle) {
     resumeFileBtn.classList.add('hidden');
     fileBtn.classList.add('hidden');
     removeFileBtn.classList.remove('hidden');
+    
+    if (movieQueue.length > 1 && queueToggleBtn) {
+      queueToggleBtn.classList.remove('hidden');
+      queueToggleBtn.textContent = `Queue (${currentQueueIndex + 1}/${movieQueue.length})`;
+    } else if (queueToggleBtn) {
+      queueToggleBtn.classList.add('hidden');
+    }
+    
     socket.emit('movie-info', { name: file.name });
+    updateQueueUIAfterLoad();
+    
+    if (!isResume && currentQueueIndex > 0) {
+      video.play().catch(() => {});
+    }
   } catch (error) {
-    // Usually means permission was not granted (e.g., page refresh)
     fileBtn.classList.add('hidden');
     resumeFileBtn.classList.remove('hidden');
     removeFileBtn.classList.add('hidden');
     fileNameEl.textContent = `Movie saved. Click resume to watch.`;
+    if (queueToggleBtn) queueToggleBtn.classList.add('hidden');
   }
 }
 
 fileBtn.addEventListener('click', async () => {
-  // If the modern file system API is available (only works on localhost or HTTPS)
   if (window.showOpenFilePicker) {
     try {
-      const [handle] = await window.showOpenFilePicker({
+      const handles = await window.showOpenFilePicker({
+        multiple: true,
         types: [{ description: 'Video Files', accept: { 'video/*': ['.mp4', '.mkv', '.webm'] } }]
       });
-      await saveFileHandle(handle);
-      await loadVideoFromHandle(handle);
+      movieQueue = handles;
+      currentQueueIndex = 0;
+      await saveQueueState();
+      renderQueueUI();
+      await loadVideoFromQueue();
     } catch (err) {
       // User cancelled picking
     }
   } else {
-    // Fallback for non-secure contexts (like IP address sharing over HTTP)
     fallbackFileInput.click();
   }
 });
 
 fallbackFileInput.addEventListener('change', () => {
-  const file = fallbackFileInput.files[0];
-  if (file) {
+  const files = Array.from(fallbackFileInput.files);
+  if (files.length > 0) {
+    movieQueue = files;
+    currentQueueIndex = 0;
+    renderQueueUI();
+    loadVideoFromQueue();
+  }
+});
 
-
-    const url = URL.createObjectURL(file);
-    video.src = url;
-    video.load();
-    noFilePlaceholder.classList.add('hidden');
-    fileNameEl.textContent = file.name;
-    fileBtn.classList.add('hidden');
-    removeFileBtn.classList.remove('hidden');
-    socket.emit('movie-info', { name: file.name });
+video.addEventListener('ended', () => {
+  if (currentQueueIndex < movieQueue.length - 1) {
+    currentQueueIndex++;
+    saveQueueState();
+    loadVideoFromQueue(false);
   }
 });
 
@@ -385,9 +516,14 @@ removeFileBtn.addEventListener('click', async () => {
   await removeSavedFiles();
   sessionStorage.removeItem('tsos-video-time');
   
-  // Remove subtitles track if present
   const oldTrack = video.querySelector('track');
   if (oldTrack) oldTrack.remove();
+  
+  movieQueue = [];
+  currentQueueIndex = 0;
+  if (queuePanel) queuePanel.classList.add('hidden');
+  if (queueToggleBtn) queueToggleBtn.classList.add('hidden');
+  renderQueueUI();
   
   noFilePlaceholder.classList.remove('hidden');
   fileNameEl.textContent = "No file selected on this laptop yet.";
@@ -400,26 +536,30 @@ removeFileBtn.addEventListener('click', async () => {
 });
 
 resumeFileBtn.addEventListener('click', async () => {
-  const handle = await getFileHandle();
-  if (handle) {
-    await handle.requestPermission({ mode: 'read' });
-    await loadVideoFromHandle(handle);
+  if (movieQueue.length > 0 && movieQueue[currentQueueIndex].requestPermission) {
+    await movieQueue[currentQueueIndex].requestPermission({ mode: 'read' });
+    await loadVideoFromQueue(true);
   }
 });
 
 async function initSessionPersistence() {
-  // If there's no session flag, it means the tab was just opened (not refreshed).
-  // We wipe the database so that the movie is truly cleared on tab close.
   if (!sessionStorage.getItem('tsos-active-session')) {
     await removeSavedFiles();
     sessionStorage.setItem('tsos-active-session', 'true');
   }
 
-  // Check for saved file handle on load (survives refresh)
   if (window.showOpenFilePicker) {
-    getFileHandle().then(handle => {
-      if (handle) {
-        loadVideoFromHandle(handle);
+    getFileHandle().then(state => {
+      if (state) {
+        if (state.queue) {
+          movieQueue = state.queue;
+          currentQueueIndex = state.index || 0;
+        } else {
+          movieQueue = [state]; // Legacy fallback
+          currentQueueIndex = 0;
+        }
+        renderQueueUI();
+        loadVideoFromQueue(true);
       }
     });
   }
