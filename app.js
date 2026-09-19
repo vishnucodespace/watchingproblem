@@ -1442,26 +1442,42 @@ function updateVolumeHud(show = true) {
 }
 
 function adjustVolume(delta) {
-  if (player.muted && delta > 0) {
+  if ((player.muted || video.muted) && delta > 0) {
     player.muted = false;
+    video.muted = false;
   }
-  let newVol = Math.round((player.volume + delta) * 100) / 100;
+  const currentVol = (player.muted || video.muted) ? 0 : (player.volume ?? video.volume ?? 1);
+  let newVol = Math.round((currentVol + delta) * 100) / 100;
   newVol = Math.max(0, Math.min(1, newVol));
   if (newVol === 0) {
     player.muted = true;
-  } else if (player.muted) {
+    video.muted = true;
+  } else {
     player.muted = false;
+    video.muted = false;
+    lastNonZeroVolume = newVol;
   }
   player.volume = newVol;
+  video.volume = newVol;
   updateVolumeHud(true);
 }
 
 function toggleMuteVolume() {
-  if (player.muted || player.volume === 0) {
+  const currentlyMuted = player.muted || video.muted || player.volume === 0 || video.volume === 0;
+  if (currentlyMuted) {
+    const restoreVol = lastNonZeroVolume || 1.0;
     player.muted = false;
-    player.volume = lastNonZeroVolume || 1.0;
+    video.muted = false;
+    player.volume = restoreVol;
+    video.volume = restoreVol;
   } else {
+    if (player.volume > 0) {
+      lastNonZeroVolume = player.volume;
+    } else if (video.volume > 0) {
+      lastNonZeroVolume = video.volume;
+    }
     player.muted = true;
+    video.muted = true;
   }
   updateVolumeHud(true);
 }
@@ -1485,7 +1501,60 @@ function toggleVideoPlayback() {
   wakeUpOverlay();
 }
 
-// 1. Keyboard Shortcuts (Space: Play/Pause, ArrowUp / ArrowDown: Volume, ArrowLeft / ArrowRight: Seek, M: Mute, F: Fullscreen)
+function isFullScreen() {
+  return Boolean(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.mozFullScreenElement ||
+    document.msFullscreenElement ||
+    (player && player.fullscreen && player.fullscreen.active)
+  );
+}
+
+function toggleFullScreen() {
+  if (isFullScreen()) {
+    // Exit full-screen (back from full-screen)
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {
+        if (player && player.fullscreen && typeof player.fullscreen.exit === 'function') {
+          player.fullscreen.exit();
+        }
+      });
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    } else if (player && player.fullscreen && typeof player.fullscreen.exit === 'function') {
+      player.fullscreen.exit();
+    }
+  } else {
+    // Enter full-screen
+    if (player && player.fullscreen && typeof player.fullscreen.enter === 'function') {
+      try {
+        player.fullscreen.enter();
+      } catch (err) {
+        const plyrEl = document.querySelector('.plyr') || screenFrame;
+        if (plyrEl && plyrEl.requestFullscreen) {
+          plyrEl.requestFullscreen().catch(() => {});
+        } else if (plyrEl && plyrEl.webkitRequestFullscreen) {
+          plyrEl.webkitRequestFullscreen();
+        }
+      }
+    } else {
+      const plyrEl = document.querySelector('.plyr') || screenFrame;
+      if (plyrEl && plyrEl.requestFullscreen) {
+        plyrEl.requestFullscreen().catch(() => {});
+      } else if (plyrEl && plyrEl.webkitRequestFullscreen) {
+        plyrEl.webkitRequestFullscreen();
+      }
+    }
+  }
+  wakeUpOverlay();
+}
+
+// 1. Keyboard Shortcuts (Space: Play/Pause, F: Fullscreen Toggle, ArrowUp / ArrowDown: Volume, ArrowLeft / ArrowRight: Seek, M: Mute)
 window.addEventListener('keydown', (e) => {
   const activeEl = document.activeElement;
   const activeTag = activeEl ? activeEl.tagName.toLowerCase() : '';
@@ -1499,6 +1568,8 @@ window.addEventListener('keydown', (e) => {
   }
 
   const isSpaceKey = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
+  const isFKey = ((e.key === 'f' || e.key === 'F' || e.code === 'KeyF') && !e.ctrlKey && !e.metaKey && !e.altKey);
+  const isMKey = ((e.key === 'm' || e.key === 'M' || e.code === 'KeyM') && !e.ctrlKey && !e.metaKey && !e.altKey);
 
   if (isSpaceKey) {
     // Intercept space completely so it ONLY toggles play/pause:
@@ -1513,6 +1584,28 @@ window.addEventListener('keydown', (e) => {
     }
 
     toggleVideoPlayback();
+  } else if (isFKey) {
+    // Full-screen and back from that
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    if (activeEl && typeof activeEl.blur === 'function') {
+      activeEl.blur();
+    }
+
+    toggleFullScreen();
+  } else if (isMKey) {
+    // Mute and unmute toggle
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    if (activeEl && typeof activeEl.blur === 'function') {
+      activeEl.blur();
+    }
+
+    toggleMuteVolume();
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     adjustVolume(0.05);
@@ -1525,21 +1618,15 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'ArrowRight') {
     e.preventDefault();
     performSeek(10);
-  } else if (e.key === 'm' || e.key === 'M') {
-    e.preventDefault();
-    toggleMuteVolume();
-  } else if (e.key === 'f' || e.key === 'F') {
-    e.preventDefault();
-    if (player && player.fullscreen) {
-      player.fullscreen.toggle();
-    }
   }
 }, true);
 
-// Prevent keyup default on Space so buttons don't fire on key release
+// Prevent keyup default on Space, F, and M so buttons don't fire on key release
 window.addEventListener('keyup', (e) => {
   const isSpaceKey = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
-  if (isSpaceKey) {
+  const isFKey = ((e.key === 'f' || e.key === 'F' || e.code === 'KeyF') && !e.ctrlKey && !e.metaKey && !e.altKey);
+  const isMKey = ((e.key === 'm' || e.key === 'M' || e.code === 'KeyM') && !e.ctrlKey && !e.metaKey && !e.altKey);
+  if (isSpaceKey || isFKey || isMKey) {
     const activeEl = document.activeElement;
     const activeTag = activeEl ? activeEl.tagName.toLowerCase() : '';
     if (activeTag === 'input' || activeTag === 'textarea' || activeEl?.isContentEditable) {
