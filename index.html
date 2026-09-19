@@ -1,84 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Two Seats, One Screen</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css" />
-<!-- Plyr CSS -->
-<link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Two Seats, One Screen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=2.0" />
+  <!-- Plyr CSS -->
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
 </head>
+
 <body>
 
-<div class="grain-overlay" aria-hidden="true"></div>
+  <div class="grain-overlay" aria-hidden="true"></div>
 
-<!-- ============================= SETUP SCREEN ============================= -->
-<main id="setup-screen" class="screen">
-  <div class="booth-card">
+  <!-- ============================= SETUP SCREEN ============================= -->
+  <main id="setup-screen" class="screen">
+    <div class="booth-card">
 
-    <p class="eyebrow">Two Seats &middot; One Screen</p>
-    <h1 class="headline">Same film,<br />two couches,<br /><em>one showtime.</em></h1>
-    <p class="subhead">
-      Each of you opens the same movie file on your own laptop. Nothing gets uploaded —
-      we just keep both players locked to the same second, so a pause in one living room
-      pauses the other, instantly.
-    </p>
+      <p class="eyebrow">Two Seats &middot; One Screen</p>
+      <h1 class="headline">Same film,<br />two couches,<br /><em>one showtime.</em></h1>
+      <p class="subhead">
+        Each of you opens the same movie file on your own laptop. Nothing gets uploaded —
+        we just keep both players locked to the same second, so a pause in one living room
+        pauses the other, instantly.
+      </p>
 
-    <div class="ticket">
-      <div class="ticket-half">
-        <p class="ticket-label">First to arrive</p>
-        <h2 class="ticket-title">Start tonight's screening</h2>
-        <p class="ticket-copy">We'll print a stub code. Send it to your date.</p>
-        <button id="create-room-btn" class="btn btn-gold">Start screening</button>
-      </div>
-
-      <div class="perforation" aria-hidden="true"></div>
-
-      <div class="ticket-half">
-        <p class="ticket-label">Second to arrive</p>
-        <h2 class="ticket-title">Enter your stub code</h2>
-        <div class="join-row">
-          <input
-            id="ticket-token-input"
-            class="stub-input"
-            type="text"
-            maxlength="5"
-            placeholder="XXXXX"
-            autocomplete="off"
-            autocapitalize="characters"
-            spellcheck="false"
-            data-lpignore="true"
-          />
-          <button id="join-room-btn" class="btn btn-outline">Take seat</button>
+      <div class="ticket">
+        <div class="ticket-half">
+          <p class="ticket-label">First to arrive</p>
+          <h2 class="ticket-title">Start tonight's screening</h2>
+          <p class="ticket-copy">We'll print a stub code. Send it to your date.</p>
+          <button id="create-room-btn" class="btn btn-gold">Start screening</button>
         </div>
-        <p id="join-error" class="join-error" role="alert"></p>
+
+        <div class="perforation" aria-hidden="true"></div>
+
+        <div class="ticket-half">
+          <p class="ticket-label">Second to arrive</p>
+          <h2 class="ticket-title">Enter your stub code</h2>
+          <div class="join-row">
+            <input id="ticket-token-input" class="stub-input" type="text" maxlength="5" placeholder="XXXXX"
+              autocomplete="off" autocapitalize="characters" spellcheck="false" data-lpignore="true" />
+            <button id="join-room-btn" class="btn btn-outline">Take seat</button>
+          </div>
+          <p id="join-error" class="join-error" role="alert"></p>
+        </div>
       </div>
-    </div>
 
-    <p class="fineprint">
-      Works best when you both already have the exact same video file downloaded —
-      same cut, same encode. This only synchronizes play, pause, and seek; the file itself
-      never leaves your computer.
-    </p>
-  </div>
-</main>
+      <p class="fineprint">
+        Works best when you both already have the exact same video file downloaded —
+        same cut, same encode. This only synchronizes play, pause, and seek; the file itself
+        never leaves your computer.
+      </p>
+    </div>
+  </main>
 
-<!-- ============================ THEATER SCREEN ============================ -->
-<main id="theater-screen" class="screen hidden">
-  <header class="theater-bar">
-    <div class="stub-chip">
-      <span class="stub-chip-label">Stub No.</span>
-      <span id="stub-code" class="stub-code">—</span>
-    </div>
-    <div class="status-line">
-      <span id="status-dot" class="status-dot"></span>
-      <span id="status" class="status-text">Waiting for your date&hellip;</span>
-    </div>
-    <button id="leave-room-btn" class="btn btn-outline btn-small" style="margin-left: auto; font-size: 0.8rem; padding: 0.25rem 0.75rem;">Leave Room</button>
-  </header>
+  <!-- ============================ THEATER SCREEN ============================ -->
+  <main id="theater-screen" class="screen hidden">
+    <header class="theater-bar">
+      <div class="stub-chip">
+        <span class="stub-chip-label">Stub No.</span>
+        <span id="stub-code" class="stub-code">—</span>
+      </div>
+      <div class="status-line">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status" class="status-text">Waiting for your date&hellip;</span>
+      </div>
+      <button id="leave-room-btn" class="btn btn-outline btn-small"
+        style="margin-left: auto; font-size: 0.8rem; padding: 0.25rem 0.75rem;">Leave Room</button>
+    </header>
 
     <!-- Video Player Container -->
     <div class="screen-frame">
@@ -89,91 +85,159 @@
         <p>Waiting for you to load a reel...</p>
       </div>
 
-    <!-- Sync Drift Indicator (Hidden by default) -->
-    <div id="sync-drift-indicator" class="sync-drift hidden">
-      <span id="sync-drift-text">Drift: 0.0s</span>
-      <button id="force-sync-btn" class="sync-btn-small">Sync</button>
-    </div>
-    
-    <!-- Reactions Layer (Always on top) -->
-    <div id="reactions-layer" class="reactions-layer"></div>
-
-    <!-- Ephemeral Floating Messages Area (Always visible, bottom-left) -->
-    <div id="chat-ephemeral" class="chat-ephemeral"></div>
-
-    <!-- Ephemeral Drawing Canvas Overlay -->
-    <canvas id="drawing-canvas" class="drawing-canvas"></canvas>
-
-    <!-- Cinematic Chat & Interaction Controls (Auto-Hiding Overlay) -->
-    <div id="interaction-overlay" class="interaction-overlay">
-      <!-- Walkie-Talkie and Draw Buttons (Top Left) -->
-      <div class="walkie-controls">
-        <button id="walkie-btn" class="icon-btn" title="Toggle Mic">🎤</button>
-        <button id="draw-btn" class="icon-btn" title="Toggle Drawing Mode">🖍️</button>
+      <!-- Sync Drift Indicator (Hidden by default) -->
+      <div id="sync-drift-indicator" class="sync-drift hidden">
+        <span id="sync-drift-text">Drift: 0.0s</span>
+        <button id="force-sync-btn" class="sync-btn-small">Sync</button>
       </div>
 
-      <!-- Floating Buttons (Top Right, above Plyr controls) -->
-      <div class="interaction-controls">
-        <button id="reaction-heart-btn" class="icon-btn">❤️</button>
-        <button id="reaction-laugh-btn" class="icon-btn">😂</button>
-        <button id="reaction-popcorn-btn" class="icon-btn">🍿</button>
-        <button id="chat-toggle-btn" class="icon-btn">💬</button>
+      <!-- Orientation Lock HUD Indicator -->
+      <div id="orientation-hud" class="orientation-hud hidden">
+        <span id="orientation-hud-text">📱 Locked to Landscape</span>
       </div>
 
-      <!-- Chat Panel (Hidden by default, transparent background) -->
-      <div id="chat-panel" class="chat-panel hidden">
-        <div id="chat-history" class="chat-history"></div>
-        <div class="chat-input-row">
-          <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
-          <button id="chat-send-btn">➤</button>
+      <!-- Vertical Cinema Volume HUD Overlay -->
+      <div id="volume-hud" class="volume-hud" aria-label="Volume level" role="status">
+        <span id="volume-hud-level" class="volume-hud-level">100%</span>
+        <div class="volume-hud-track" id="volume-hud-track" title="Adjust volume">
+          <div id="volume-hud-fill" class="volume-hud-fill"></div>
+        </div>
+        <button id="volume-hud-icon-btn" class="volume-hud-icon-btn" aria-label="Toggle Mute" title="Toggle Mute">
+          <svg id="volume-hud-icon-high" class="volume-hud-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+          <svg id="volume-hud-icon-low" class="volume-hud-svg hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+          <svg id="volume-hud-icon-mute" class="volume-hud-svg hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/>
+            <line x1="22" y1="9" x2="16" y2="15"/>
+            <line x1="16" y1="9" x2="22" y2="15"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- YouTube-Style Double-Tap Seek Indicators -->
+      <div id="seek-overlay-left" class="yt-seek-overlay yt-seek-left hidden" aria-label="Rewind 10 seconds">
+        <div class="yt-seek-ripple"></div>
+        <div class="yt-seek-content">
+          <svg class="yt-seek-arrow-svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M11 18l-8-6 8-6v12z"/>
+            <path d="M19 18l-8-6 8-6v12z"/>
+          </svg>
+          <span id="seek-overlay-left-text" class="yt-seek-label">10s</span>
         </div>
       </div>
 
-      <!-- Queue Panel (Hidden by default) -->
-      <div id="queue-panel" class="queue-panel hidden">
-        <div class="queue-header">
-          <h3>Up Next</h3>
-          <button id="queue-close-btn" class="icon-btn" style="width:28px;height:28px;font-size:12px;">✕</button>
+      <div id="seek-overlay-right" class="yt-seek-overlay yt-seek-right hidden" aria-label="Fast forward 10 seconds">
+        <div class="yt-seek-ripple"></div>
+        <div class="yt-seek-content">
+          <svg class="yt-seek-arrow-svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5 18l8-6-8-6v12z"/>
+            <path d="M13 18l8-6-8-6v12z"/>
+          </svg>
+          <span id="seek-overlay-right-text" class="yt-seek-label">10s</span>
         </div>
-        <ul id="queue-list" class="queue-list">
-          <!-- Draggable items injected here -->
-        </ul>
       </div>
 
-      <!-- Hidden audio element for WebRTC Walkie-Talkie -->
-      <audio id="walkie-audio" autoplay hidden></audio>
+      <!-- Mobile Center Play/Pause Button -->
+      <button id="mobile-play-pause-btn" class="mobile-play-pause-btn" aria-label="Toggle Play">
+        <svg id="mobile-play-icon" class="mobile-play-svg" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+        <svg id="mobile-pause-icon" class="mobile-play-svg hidden" viewBox="0 0 24 24">
+          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+        </svg>
+      </button>
+
+      <!-- Reactions Layer (Always on top) -->
+      <div id="reactions-layer" class="reactions-layer"></div>
+
+      <!-- Ephemeral Floating Messages Area (Always visible, bottom-left) -->
+      <div id="chat-ephemeral" class="chat-ephemeral"></div>
+
+      <!-- Ephemeral Drawing Canvas Overlay -->
+      <canvas id="drawing-canvas" class="drawing-canvas"></canvas>
+
+      <!-- Cinematic Chat & Interaction Controls (Auto-Hiding Overlay) -->
+      <div id="interaction-overlay" class="interaction-overlay">
+        <!-- Walkie-Talkie, Draw, and Orientation Lock Buttons (Top Left) -->
+        <div class="walkie-controls">
+          <button id="walkie-btn" class="icon-btn" title="Toggle Mic">🎤</button>
+          <button id="draw-btn" class="icon-btn" title="Toggle Drawing Mode">🖍️</button>
+          <button id="orientation-lock-btn" class="icon-btn orientation-lock-btn" title="Lock Landscape" aria-label="Lock Landscape">
+            <svg class="lock-landscape-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M21 5H3c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-2 12H5V7h14v10zm-4-6.5V9.7c0-.94-.76-1.7-1.7-1.7h-2.6c-.94 0-1.7.76-1.7 1.7v.8c-.55 0-1 .45-1 1v2.5c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V11.5c0-.55-.45-1-1-1zm-1 0h-4v-.8c0-.39.31-.7.7-.7h2.6c.39 0 .7.31.7.7v.8z"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Floating Buttons (Top Right, above Plyr controls) -->
+        <div class="interaction-controls">
+          <button id="reaction-heart-btn" class="icon-btn">❤️</button>
+          <button id="reaction-laugh-btn" class="icon-btn">😂</button>
+          <button id="reaction-popcorn-btn" class="icon-btn">🍿</button>
+          <button id="chat-toggle-btn" class="icon-btn">💬</button>
+        </div>
+
+        <!-- Chat Panel (Hidden by default, transparent background) -->
+        <div id="chat-panel" class="chat-panel hidden">
+          <div id="chat-history" class="chat-history"></div>
+          <div class="chat-input-row">
+            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+            <button id="chat-send-btn">➤</button>
+          </div>
+        </div>
+
+        <!-- Queue Panel (Hidden by default) -->
+        <div id="queue-panel" class="queue-panel hidden">
+          <div class="queue-header">
+            <h3>Up Next</h3>
+            <button id="queue-close-btn" class="icon-btn" style="width:28px;height:28px;font-size:12px;">✕</button>
+          </div>
+          <ul id="queue-list" class="queue-list">
+            <!-- Draggable items injected here -->
+          </ul>
+        </div>
+
+        <!-- Hidden audio element for WebRTC Walkie-Talkie -->
+        <audio id="walkie-audio" autoplay hidden></audio>
+      </div>
     </div>
-  </div>
 
-  <footer class="reel-bar">
-    <button id="file-btn" class="btn btn-outline file-btn">
-      Load Movie(s)
-    </button>
-    <input id="fallback-file-input" type="file" accept="video/*" multiple hidden />
-    
-    <!-- A hidden button shown only when we have a saved file handle but need permission to read it -->
-    <button id="resume-file-btn" class="btn btn-gold file-btn hidden">
-      Resume watching
-    </button>
+    <footer class="reel-bar">
+      <button id="file-btn" class="btn btn-outline file-btn">
+        Load Movie(s)
+      </button>
+      <input id="fallback-file-input" type="file" accept="video/*" multiple hidden />
 
-    <button id="sub-btn" class="btn btn-outline file-btn" style="margin-left: 1rem;">
-      Load Subtitles (.srt/.vtt)
-    </button>
-    <button id="remove-sub-btn" class="btn btn-outline file-btn hidden" style="border-color: var(--accent-rose); color: var(--accent-rose);">
-      Remove Subtitles
-    </button>
-    <input id="sub-input" type="file" accept=".srt,.vtt" hidden />
-    
-    <button id="queue-toggle-btn" class="btn btn-outline file-btn hidden" style="margin-left: auto;">
-      Queue (1)
-    </button>
-    <span id="file-name" class="file-name">No file selected on this laptop yet.</span>
-  </footer>
-</main>
+      <!-- A hidden button shown only when we have a saved file handle but need permission to read it -->
+      <button id="resume-file-btn" class="btn btn-gold file-btn hidden">
+        Resume watching
+      </button>
 
-<script src="/socket.io/socket.io.js"></script>
-<!-- Plyr JS -->
-<script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-<script src="app.js"></script>
+      <button id="sub-btn" class="btn btn-outline file-btn" style="margin-left: 1rem;">
+        Load Subtitles (.srt/.vtt)
+      </button>
+      <button id="remove-sub-btn" class="btn btn-outline file-btn hidden"
+        style="border-color: var(--accent-rose); color: var(--accent-rose);">
+        Remove Subtitles
+      </button>
+      <input id="sub-input" type="file" accept=".srt,.vtt" hidden />
+
+      <button id="queue-toggle-btn" class="btn btn-outline file-btn hidden" style="margin-left: auto;">
+        Queue (1)
+      </button>
+      <span id="file-name" class="file-name">No file selected on this laptop yet.</span>
+    </footer>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Plyr JS -->
+  <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+  <script src="app.js?v=2.0"></script>
 </body>
 </html>

@@ -57,6 +57,28 @@ const reactionBtns = {
 };
 
 const reactionsLayer = document.getElementById('reactions-layer');
+const orientationLockBtn = document.getElementById('orientation-lock-btn');
+const orientationHud = document.getElementById('orientation-hud');
+const orientationHudText = document.getElementById('orientation-hud-text');
+const mobilePlayPauseBtn = document.getElementById('mobile-play-pause-btn');
+const mobilePlayIcon = document.getElementById('mobile-play-icon');
+const mobilePauseIcon = document.getElementById('mobile-pause-icon');
+
+// Vertical Cinema Volume HUD elements
+const volumeHud = document.getElementById('volume-hud');
+const volumeHudLevel = document.getElementById('volume-hud-level');
+const volumeHudTrack = document.getElementById('volume-hud-track');
+const volumeHudFill = document.getElementById('volume-hud-fill');
+const volumeHudIconBtn = document.getElementById('volume-hud-icon-btn');
+const volumeHudIconHigh = document.getElementById('volume-hud-icon-high');
+const volumeHudIconLow = document.getElementById('volume-hud-icon-low');
+const volumeHudIconMute = document.getElementById('volume-hud-icon-mute');
+
+// YouTube-style Double-Tap Seek elements
+const seekOverlayLeft = document.getElementById('seek-overlay-left');
+const seekOverlayRight = document.getElementById('seek-overlay-right');
+const seekOverlayLeftText = document.getElementById('seek-overlay-left-text');
+const seekOverlayRightText = document.getElementById('seek-overlay-right-text');
 
 // Initialize Plyr
 const player = new Plyr('#video', {
@@ -71,11 +93,21 @@ player.on('ready', () => {
   const reactionsLayer = document.getElementById('reactions-layer');
   const chatEphemeral = document.getElementById('chat-ephemeral');
   const interactionOverlay = document.getElementById('interaction-overlay');
-  
+  const orientationHudEl = document.getElementById('orientation-hud');
+  const mobileBtnEl = document.getElementById('mobile-play-pause-btn');
+  const volumeHudEl = document.getElementById('volume-hud');
+  const seekLeftEl = document.getElementById('seek-overlay-left');
+  const seekRightEl = document.getElementById('seek-overlay-right');
+
   if (plyrContainer) {
     if (drawingCanvas) plyrContainer.appendChild(drawingCanvas); // Ensure canvas scales with player
     if (reactionsLayer) plyrContainer.appendChild(reactionsLayer);
     if (chatEphemeral) plyrContainer.appendChild(chatEphemeral);
+    if (orientationHudEl) plyrContainer.appendChild(orientationHudEl);
+    if (mobileBtnEl) plyrContainer.appendChild(mobileBtnEl);
+    if (volumeHudEl) plyrContainer.appendChild(volumeHudEl);
+    if (seekLeftEl) plyrContainer.appendChild(seekLeftEl);
+    if (seekRightEl) plyrContainer.appendChild(seekRightEl);
     if (interactionOverlay) plyrContainer.appendChild(interactionOverlay);
   }
 });
@@ -97,7 +129,7 @@ socket.on('time-ping', (partnerTime) => {
     if (drift > 0.5) {
       document.getElementById('sync-drift-text').textContent = `Drift: ${drift.toFixed(1)}s`;
       syncDriftIndicator.classList.remove('hidden');
-      
+
       clearTimeout(driftTimer);
       driftTimer = setTimeout(() => {
         syncDriftIndicator.classList.add('hidden');
@@ -153,7 +185,7 @@ async function getFileHandle() {
 
 async function saveSubtitles(text, name) {
   const db = await getDB();
-  db.transaction(storeName, 'readwrite').objectStore(storeName).put({text, name}, 'subs');
+  db.transaction(storeName, 'readwrite').objectStore(storeName).put({ text, name }, 'subs');
 }
 
 async function getSubtitles() {
@@ -257,7 +289,7 @@ function enterTheater(code) {
   theaterScreen.classList.remove('hidden');
   // Default status — will be overridden by caller if needed
   setStatus('Waiting for your date to take their seat…', false);
-  
+
   // Request mic permission for Walkie-Talkie in background
   initWebRTC();
 }
@@ -348,7 +380,7 @@ function renderQueueUI() {
     li.className = 'queue-item' + (index === currentQueueIndex ? ' active-item' : '');
     li.draggable = true;
     li.dataset.index = index;
-    
+
     const nameEl = document.createElement('span');
     nameEl.className = 'queue-item-name';
     nameEl.textContent = item.name;
@@ -361,11 +393,11 @@ function renderQueueUI() {
         await loadVideoFromQueue();
       }
     };
-    
+
     const handleEl = document.createElement('span');
     handleEl.className = 'queue-item-drag-handle';
     handleEl.textContent = '☰';
-    
+
     const removeBtn = document.createElement('button');
     removeBtn.className = 'queue-item-remove';
     removeBtn.textContent = '✕';
@@ -374,20 +406,20 @@ function renderQueueUI() {
       e.stopPropagation();
       removeQueueItem(index);
     };
-    
+
     li.appendChild(nameEl);
     li.appendChild(removeBtn);
     li.appendChild(handleEl);
-    
+
     li.addEventListener('dragstart', handleDragStart);
     li.addEventListener('dragover', handleDragOver);
     li.addEventListener('drop', handleDrop);
     li.addEventListener('dragenter', handleDragEnter);
     li.addEventListener('dragleave', handleDragLeave);
-    
+
     queueList.appendChild(li);
   });
-  
+
   if (movieQueue.length > 1 && queueToggleBtn) {
     queueToggleBtn.classList.remove('hidden');
     queueToggleBtn.textContent = `Queue (${currentQueueIndex + 1}/${movieQueue.length})`;
@@ -398,7 +430,7 @@ function renderQueueUI() {
 
 async function removeQueueItem(index) {
   movieQueue.splice(index, 1);
-  
+
   if (movieQueue.length === 0) {
     // Queue is empty, reset player
     video.pause();
@@ -406,19 +438,19 @@ async function removeQueueItem(index) {
     video.load();
     await removeSavedFiles();
     sessionStorage.removeItem('tsos-video-time');
-    
+
     const oldTrack = video.querySelector('track');
     if (oldTrack) oldTrack.remove();
-    
+
     currentQueueIndex = 0;
     myMovieName = null;
     if (queuePanel) queuePanel.classList.add('hidden');
     if (queueToggleBtn) queueToggleBtn.classList.add('hidden');
-    
+
     noFilePlaceholder.classList.remove('hidden');
     fileNameEl.textContent = "No file selected on this laptop yet.";
     resumeFileBtn.classList.add('hidden');
-    
+
     socket.emit('movie-info', { name: "No file selected" });
   } else {
     // If we removed the currently playing item
@@ -427,13 +459,13 @@ async function removeQueueItem(index) {
         currentQueueIndex = Math.max(0, movieQueue.length - 1);
       }
       await loadVideoFromQueue(false);
-    } 
+    }
     // If we removed an item before the currently playing item
     else if (index < currentQueueIndex) {
       currentQueueIndex--;
     }
     await saveQueueState();
-    
+
     if (movieQueue.length > 1 && queueToggleBtn) {
       queueToggleBtn.textContent = `Queue (${currentQueueIndex + 1}/${movieQueue.length})`;
     } else if (movieQueue.length <= 1 && queueToggleBtn) {
@@ -480,12 +512,12 @@ function handleDrop(e) {
   const li = e.currentTarget;
   li.classList.remove('drag-over');
   document.querySelectorAll('.queue-item').forEach(el => el.classList.remove('dragging'));
-  
+
   const targetIndex = parseInt(li.dataset.index);
   if (draggedItemIndex !== null && draggedItemIndex !== targetIndex) {
     const draggedItem = movieQueue.splice(draggedItemIndex, 1)[0];
     movieQueue.splice(targetIndex, 0, draggedItem);
-    
+
     if (currentQueueIndex === draggedItemIndex) {
       currentQueueIndex = targetIndex;
     } else if (draggedItemIndex < currentQueueIndex && targetIndex >= currentQueueIndex) {
@@ -493,10 +525,10 @@ function handleDrop(e) {
     } else if (draggedItemIndex > currentQueueIndex && targetIndex <= currentQueueIndex) {
       currentQueueIndex++;
     }
-    
+
     saveQueueState();
     renderQueueUI();
-    
+
     if (movieQueue.length > 1 && queueToggleBtn) {
       queueToggleBtn.textContent = `Queue (${currentQueueIndex + 1}/${movieQueue.length})`;
     }
@@ -505,7 +537,7 @@ function handleDrop(e) {
 
 async function loadVideoFromQueue(isResume = false) {
   if (movieQueue.length === 0 || currentQueueIndex >= movieQueue.length) return;
-  
+
   const item = movieQueue[currentQueueIndex];
   let file;
   try {
@@ -514,11 +546,11 @@ async function loadVideoFromQueue(isResume = false) {
     } else {
       file = item;
     }
-    
+
     const url = URL.createObjectURL(file);
     video.src = url;
     video.load();
-    
+
     if (isResume) {
       const savedTime = sessionStorage.getItem('tsos-video-time');
       if (savedTime) {
@@ -527,25 +559,25 @@ async function loadVideoFromQueue(isResume = false) {
     } else {
       sessionStorage.setItem('tsos-video-time', '0');
     }
-    
+
     noFilePlaceholder.classList.add('hidden');
     fileNameEl.textContent = file.name;
     resumeFileBtn.classList.add('hidden');
     // We intentionally do NOT hide fileBtn anymore, so users can keep appending to queue
-    
+
     if (movieQueue.length > 1 && queueToggleBtn) {
       queueToggleBtn.classList.remove('hidden');
       queueToggleBtn.textContent = `Queue (${currentQueueIndex + 1}/${movieQueue.length})`;
     } else if (queueToggleBtn) {
       queueToggleBtn.classList.add('hidden');
     }
-    
+
     myMovieName = file.name;
     socket.emit('movie-info', { name: file.name });
     updateQueueUIAfterLoad();
-    
+
     if (!isResume && currentQueueIndex > 0) {
-      video.play().catch(() => {});
+      video.play().catch(() => { });
     }
   } catch (error) {
     resumeFileBtn.classList.remove('hidden');
@@ -647,7 +679,7 @@ socket.on('movie-info', async (info) => {
   }
 
   partnerMovieName = info.name;
-  
+
   if (myMovieName && normalizeName(myMovieName) !== normalizeName(partnerMovieName)) {
     const matchIndex = movieQueue.findIndex(item => normalizeName(item.name) === normalizeName(partnerMovieName));
     if (matchIndex !== -1 && matchIndex !== currentQueueIndex) {
@@ -687,7 +719,7 @@ function applySubtitleTrack(vttText, fileName) {
   track.src = url;
   track.default = true;
   video.appendChild(track);
-  
+
   // Update filename display
   const currentText = fileNameEl.textContent;
   if (!currentText.includes('| Subs:')) {
@@ -695,7 +727,7 @@ function applySubtitleTrack(vttText, fileName) {
   } else {
     fileNameEl.textContent = currentText.replace(/\| Subs:.*$/, `| Subs: ${fileName}`);
   }
-  
+
   removeSubBtn.classList.remove('hidden');
 }
 
@@ -705,7 +737,7 @@ subInput.addEventListener('change', async () => {
 
   const text = await file.text();
   let vttText = text;
-  
+
   // Basic SRT to VTT converter (HTML5 video requires VTT format)
   if (file.name.toLowerCase().endsWith('.srt')) {
     vttText = 'WEBVTT\n\n' + text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
@@ -718,13 +750,13 @@ subInput.addEventListener('change', async () => {
 removeSubBtn.addEventListener('click', async () => {
   const oldTrack = video.querySelector('track');
   if (oldTrack) oldTrack.remove();
-  
+
   await removeSavedSubtitles();
-  
+
   // Clean up filename display
   const currentText = fileNameEl.textContent;
   fileNameEl.textContent = currentText.replace(/ \| Subs:.*$/, '');
-  
+
   removeSubBtn.classList.add('hidden');
 });
 
@@ -735,18 +767,22 @@ let interactionTimer = null;
 
 function wakeUpOverlay() {
   interactionOverlay.classList.remove('hide-ui');
+  if (mobilePlayPauseBtn) mobilePlayPauseBtn.classList.remove('hidden');
   if (interactionTimer) clearTimeout(interactionTimer);
-  
-  // If the chat panel is currently OPEN, do not hide the UI!
-  if (!chatPanel.classList.contains('hidden')) return;
+
+  // If the chat panel is currently OPEN, or video is paused, do not hide the UI!
+  if (!chatPanel.classList.contains('hidden') || !video || video.paused) return;
 
   interactionTimer = setTimeout(() => {
     interactionOverlay.classList.add('hide-ui');
+    if (mobilePlayPauseBtn && !video.paused) {
+      mobilePlayPauseBtn.classList.add('hidden');
+    }
   }, 3000); // Hide after 3 seconds of inactivity
 }
 
 screenFrame.addEventListener('mousemove', wakeUpOverlay);
-screenFrame.addEventListener('touchstart', wakeUpOverlay, {passive: true});
+screenFrame.addEventListener('touchstart', wakeUpOverlay, { passive: true });
 
 // ---------------------------------------------------------------------------
 // Chat Logic & History
@@ -773,7 +809,7 @@ function showMessage(text, isMine) {
     ephemEl.className = `chat-message`;
     ephemEl.textContent = text;
     chatEphemeral.appendChild(ephemEl);
-    
+
     // Auto fade out
     setTimeout(() => {
       ephemEl.style.opacity = '0';
@@ -785,7 +821,7 @@ function showMessage(text, isMine) {
 function sendChat() {
   const text = chatInput.value.trim();
   if (!text) return;
-  
+
   showMessage(text, true);
   socket.emit('chat-message', text);
   chatInput.value = '';
@@ -825,7 +861,7 @@ function spawnReaction(emoji, xPos = null) {
   const el = document.createElement('div');
   el.className = 'reaction-bubble';
   el.textContent = emoji;
-  
+
   if (xPos === null) {
     xPos = Math.random() > 0.5 ? Math.random() * 20 + 5 : Math.random() * 20 + 75;
     el.style.left = `${xPos}%`;
@@ -836,14 +872,14 @@ function spawnReaction(emoji, xPos = null) {
     if (left > rect.width - 50) left = rect.width - 50;
     el.style.left = `${left}px`;
   }
-  
+
   reactionsLayer.appendChild(el);
   setTimeout(() => el.remove(), 3000);
 }
 
 function triggerReaction(emoji) {
   // Spawn locally
-  spawnReaction(emoji); 
+  spawnReaction(emoji);
   socket.emit('reaction', emoji);
 }
 
@@ -928,22 +964,22 @@ const iceServers = {
 
 async function initWebRTC() {
   if (peerConnection) return;
-  
+
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     localAudioTrack = localStream.getAudioTracks()[0];
     localAudioTrack.enabled = false; // MUTED BY DEFAULT
-    
+
     peerConnection = new RTCPeerConnection(iceServers);
-    
+
     // Add local track
     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-    
+
     // Handle incoming track
     peerConnection.ontrack = event => {
       walkieAudio.srcObject = event.streams[0];
     };
-    
+
     // Handle ICE candidates
     peerConnection.onicecandidate = event => {
       if (event.candidate) {
@@ -993,7 +1029,7 @@ let isMicOn = false;
 
 function toggleMic(e) {
   e.preventDefault(); // Prevent touch text selection
-  
+
   if (!localAudioTrack) {
     // If permission wasn't granted yet, try again
     initWebRTC().then(() => {
@@ -1004,7 +1040,7 @@ function toggleMic(e) {
     });
     return;
   }
-  
+
   setMicState(!isMicOn);
 }
 
@@ -1013,7 +1049,7 @@ function setMicState(state) {
   if (localAudioTrack) {
     localAudioTrack.enabled = isMicOn;
   }
-  
+
   if (isMicOn) {
     walkieBtn.classList.add('recording');
     walkieBtn.classList.remove('mic-off');
@@ -1041,10 +1077,10 @@ function playSound(type) {
     }
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-    
+
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-    
+
     if (type === 'join') {
       // Pleasant ascending chime
       oscillator.type = 'sine';
@@ -1066,7 +1102,7 @@ function playSound(type) {
       oscillator.start(audioCtx.currentTime);
       oscillator.stop(audioCtx.currentTime + 0.5);
     }
-  } catch(e) {
+  } catch (e) {
     console.error("Audio playback failed", e);
   }
 }
@@ -1077,7 +1113,7 @@ function playSound(type) {
 let isDrawingMode = false;
 let isDrawing = false;
 let lastDrawPos = null;
-let drawnSegments = []; 
+let drawnSegments = [];
 let lastDrawActivity = Date.now();
 
 const DRAW_COLOR = '#F43F5E'; // Glowing Red
@@ -1141,7 +1177,7 @@ function handleDrawMove(e) {
   if (!isDrawing || !isDrawingMode) return;
   e.preventDefault();
   const currentPos = getCanvasPos(e);
-  
+
   if (lastDrawPos) {
     const segment = { p1: lastDrawPos, p2: currentPos, color: DRAW_COLOR };
     drawnSegments.push(segment);
@@ -1178,29 +1214,29 @@ function renderDrawings() {
   if (!ctx || !drawingCanvas) return;
   const now = Date.now();
   ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-  
+
   const idleTime = now - lastDrawActivity;
-  
+
   if (idleTime > IDLE_TIMEOUT + FADE_OUT_TIME) {
     drawnSegments = [];
     requestAnimationFrame(renderDrawings);
     return;
   }
-  
+
   let alpha = 1.0;
   if (idleTime > IDLE_TIMEOUT) {
     alpha = Math.max(0, 1.0 - ((idleTime - IDLE_TIMEOUT) / FADE_OUT_TIME));
   }
-  
+
   if (drawnSegments.length > 0) {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = 4;
-    
+
     ctx.shadowColor = DRAW_COLOR;
     ctx.shadowBlur = 10;
     ctx.globalAlpha = alpha;
-    
+
     drawnSegments.forEach(seg => {
       ctx.strokeStyle = seg.color;
       ctx.beginPath();
@@ -1208,15 +1244,446 @@ function renderDrawings() {
       ctx.lineTo(seg.p2.x * drawingCanvas.width, seg.p2.y * drawingCanvas.height);
       ctx.stroke();
     });
-    
+
     // Reset context states
     ctx.globalAlpha = 1.0;
     ctx.shadowBlur = 0;
   }
-  
+
   requestAnimationFrame(renderDrawings);
 }
 
 if (drawingCanvas) {
   requestAnimationFrame(renderDrawings);
 }
+
+// ---------------------------------------------------------------------------
+// MOBILE ORIENTATION LOCK & MOBILE TOUCH PLAY/PAUSE
+// ---------------------------------------------------------------------------
+let isOrientationLocked = false;
+let orientationToastTimer = null;
+
+function showOrientationToast(message) {
+  if (!orientationHud || !orientationHudText) return;
+  orientationHudText.textContent = message;
+  orientationHud.classList.remove('hidden');
+  clearTimeout(orientationToastTimer);
+  orientationToastTimer = setTimeout(() => {
+    orientationHud.classList.add('hidden');
+  }, 2500);
+}
+
+async function setOrientationLock(locked) {
+  isOrientationLocked = locked;
+
+  if (orientationLockBtn) {
+    if (locked) {
+      orientationLockBtn.classList.add('lock-active');
+      orientationLockBtn.setAttribute('title', 'Unlock Orientation (Auto)');
+    } else {
+      orientationLockBtn.classList.remove('lock-active');
+      orientationLockBtn.setAttribute('title', 'Lock Orientation (Landscape)');
+    }
+  }
+
+  if (locked) {
+    // 1. Hardware/Browser Screen Orientation API (Android Chrome, Firefox, Opera)
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      try {
+        await screen.orientation.lock('landscape');
+      } catch (err) {
+        console.log('Screen orientation lock without fullscreen failed or unsupported:', err);
+      }
+    }
+
+    // 2. CSS Cinema Landscape Rotation Fallback (for iOS Safari and system-portrait-locked devices)
+    document.body.classList.add('lock-landscape');
+    showOrientationToast('📱 Locked to Landscape');
+  } else {
+    // 1. Release Screen Orientation API lock
+    if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+      try {
+        screen.orientation.unlock();
+      } catch (err) {}
+    }
+
+    // 2. Remove CSS rotation
+    document.body.classList.remove('lock-landscape');
+    showOrientationToast('🔓 Orientation: Auto');
+  }
+
+  // Synchronize Plyr fullscreen button icon state with orientation lock
+  const fsBtn = document.querySelector('[data-plyr="fullscreen"]');
+  if (fsBtn) {
+    if (locked) {
+      fsBtn.classList.add('plyr__control--pressed');
+      fsBtn.setAttribute('aria-pressed', 'true');
+    } else {
+      fsBtn.classList.remove('plyr__control--pressed');
+      fsBtn.setAttribute('aria-pressed', 'false');
+    }
+  }
+
+  // Trigger resize event so Plyr and canvas recompute dimensions cleanly
+  window.dispatchEvent(new Event('resize'));
+}
+
+function toggleOrientationLock() {
+  setOrientationLock(!isOrientationLocked);
+}
+
+if (orientationLockBtn) {
+  orientationLockBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleOrientationLock();
+  });
+}
+
+// Automatically lock orientation to landscape on mobile fullscreen entry
+player.on('enterfullscreen', () => {
+  if (window.innerWidth <= 768) {
+    setOrientationLock(true);
+  }
+});
+
+player.on('exitfullscreen', () => {
+  if (window.innerWidth <= 768) {
+    setOrientationLock(false);
+  }
+});
+
+// Intercept Fullscreen Button on mobile view to directly switch into Landscape Cinema Mode
+let lastFsTapTime = 0;
+function handleMobileFullscreenClick(e) {
+  const fsBtn = e.target.closest('[data-plyr="fullscreen"]');
+  if (fsBtn && window.innerWidth <= 768) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const now = Date.now();
+    if (now - lastFsTapTime > 400) {
+      lastFsTapTime = now;
+      toggleOrientationLock();
+    }
+  }
+}
+
+document.addEventListener('click', handleMobileFullscreenClick, true);
+document.addEventListener('touchend', handleMobileFullscreenClick, true);
+
+// Sync Mobile Play/Pause Icon with Video Playback State
+function updateMobilePlayPauseBtn() {
+  if (!mobilePlayIcon || !mobilePauseIcon) return;
+  if (video.paused) {
+    mobilePlayIcon.classList.remove('hidden');
+    mobilePauseIcon.classList.add('hidden');
+    if (mobilePlayPauseBtn) mobilePlayPauseBtn.classList.remove('hidden');
+  } else {
+    mobilePlayIcon.classList.add('hidden');
+    mobilePauseIcon.classList.remove('hidden');
+  }
+}
+
+video.addEventListener('play', updateMobilePlayPauseBtn);
+video.addEventListener('pause', updateMobilePlayPauseBtn);
+
+if (mobilePlayPauseBtn) {
+  mobilePlayPauseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (video.paused) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// VERTICAL CINEMA VOLUME HUD CONTROLLER & GESTURES
+// ---------------------------------------------------------------------------
+let volumeHudTimer = null;
+let lastNonZeroVolume = 1.0;
+
+function updateVolumeHud(show = true) {
+  if (!volumeHud || !volumeHudLevel || !volumeHudFill) return;
+
+  const isMuted = player.muted || player.volume === 0;
+  const currentVol = isMuted ? 0 : player.volume;
+  const percentage = Math.round(currentVol * 100);
+
+  volumeHudLevel.textContent = `${percentage}%`;
+  volumeHudFill.style.height = `${percentage}%`;
+
+  if (isMuted || percentage === 0) {
+    volumeHudIconHigh?.classList.add('hidden');
+    volumeHudIconLow?.classList.add('hidden');
+    volumeHudIconMute?.classList.remove('hidden');
+  } else if (percentage < 50) {
+    volumeHudIconHigh?.classList.add('hidden');
+    volumeHudIconLow?.classList.remove('hidden');
+    volumeHudIconMute?.classList.add('hidden');
+  } else {
+    volumeHudIconHigh?.classList.remove('hidden');
+    volumeHudIconLow?.classList.add('hidden');
+    volumeHudIconMute?.classList.add('hidden');
+  }
+
+  if (player.volume > 0 && !player.muted) {
+    lastNonZeroVolume = player.volume;
+  }
+
+  if (show) {
+    volumeHud.classList.add('visible');
+    clearTimeout(volumeHudTimer);
+    volumeHudTimer = setTimeout(() => {
+      volumeHud.classList.remove('visible');
+    }, 1800);
+  }
+}
+
+function adjustVolume(delta) {
+  if (player.muted && delta > 0) {
+    player.muted = false;
+  }
+  let newVol = Math.round((player.volume + delta) * 100) / 100;
+  newVol = Math.max(0, Math.min(1, newVol));
+  if (newVol === 0) {
+    player.muted = true;
+  } else if (player.muted) {
+    player.muted = false;
+  }
+  player.volume = newVol;
+  updateVolumeHud(true);
+}
+
+function toggleMuteVolume() {
+  if (player.muted || player.volume === 0) {
+    player.muted = false;
+    player.volume = lastNonZeroVolume || 1.0;
+  } else {
+    player.muted = true;
+  }
+  updateVolumeHud(true);
+}
+
+// React to Plyr and Video native volume changes
+player.on('volumechange', () => {
+  updateVolumeHud(true);
+});
+video.addEventListener('volumechange', () => {
+  updateVolumeHud(true);
+});
+
+// 1. Keyboard Shortcuts (ArrowUp / ArrowDown / M)
+window.addEventListener('keydown', (e) => {
+  const activeEl = document.activeElement;
+  const activeTag = activeEl ? activeEl.tagName.toLowerCase() : '';
+  if (activeTag === 'input' || activeTag === 'textarea' || activeEl?.isContentEditable) {
+    return;
+  }
+
+  // Only active when inside theater screen
+  if (theaterScreen && theaterScreen.classList.contains('hidden')) {
+    return;
+  }
+
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    adjustVolume(0.05);
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    adjustVolume(-0.05);
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    performSeek(-10);
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    performSeek(10);
+  } else if (e.key === 'm' || e.key === 'M') {
+    e.preventDefault();
+    toggleMuteVolume();
+  }
+});
+
+const screenFrameEl = document.querySelector('.screen-frame');
+
+// 2. Direct HUD Click & Drag
+if (volumeHudIconBtn) {
+  volumeHudIconBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMuteVolume();
+  });
+}
+
+function setVolumeFromTrack(clientY) {
+  if (!volumeHudTrack) return;
+  const rect = volumeHudTrack.getBoundingClientRect();
+  const offsetY = rect.bottom - clientY;
+  let ratio = offsetY / rect.height;
+  ratio = Math.max(0, Math.min(1, ratio));
+  player.muted = (ratio === 0);
+  player.volume = Math.round(ratio * 100) / 100;
+  updateVolumeHud(true);
+}
+
+let isDraggingVolumeTrack = false;
+if (volumeHudTrack) {
+  volumeHudTrack.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+    isDraggingVolumeTrack = true;
+    setVolumeFromTrack(e.clientY);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (isDraggingVolumeTrack) {
+      setVolumeFromTrack(e.clientY);
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDraggingVolumeTrack = false;
+  });
+
+  volumeHudTrack.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+    if (e.touches && e.touches[0]) {
+      setVolumeFromTrack(e.touches[0].clientY);
+    }
+  }, { passive: true });
+
+  volumeHudTrack.addEventListener('touchmove', (e) => {
+    e.stopPropagation();
+    if (e.touches && e.touches[0]) {
+      setVolumeFromTrack(e.touches[0].clientY);
+    }
+  }, { passive: true });
+}
+
+// ---------------------------------------------------------------------------
+// YOUTUBE-STYLE DOUBLE-TAP & ARROW KEY SEEK CONTROLLER (+10s / -10s)
+// ---------------------------------------------------------------------------
+let seekHudTimer = null;
+let accumulatedSeekSeconds = 0;
+let lastSeekDirection = null;
+
+function performSeek(seconds) {
+  const current = video ? video.currentTime : 0;
+  const duration = video && video.duration && !isNaN(video.duration) ? video.duration : null;
+  const targetTime = duration ? Math.max(0, Math.min(duration, current + seconds)) : Math.max(0, current + seconds);
+
+  if (video) {
+    video.currentTime = targetTime;
+  }
+
+  const direction = seconds > 0 ? 'right' : 'left';
+
+  if (lastSeekDirection === direction && seekHudTimer) {
+    accumulatedSeekSeconds += Math.abs(seconds);
+  } else {
+    accumulatedSeekSeconds = Math.abs(seconds);
+  }
+  lastSeekDirection = direction;
+
+  const overlay = direction === 'right' ? seekOverlayRight : seekOverlayLeft;
+  const textEl = direction === 'right' ? seekOverlayRightText : seekOverlayLeftText;
+  const otherOverlay = direction === 'right' ? seekOverlayLeft : seekOverlayRight;
+
+  if (otherOverlay) {
+    otherOverlay.classList.remove('visible', 'yt-seek-pulse');
+  }
+
+  if (overlay && textEl) {
+    textEl.textContent = `${accumulatedSeekSeconds}s`;
+    overlay.classList.remove('hidden');
+    overlay.classList.add('visible');
+
+    // Trigger micro-animation
+    overlay.classList.remove('yt-seek-pulse');
+    void overlay.offsetWidth; // force reflow
+    overlay.classList.add('yt-seek-pulse');
+
+    clearTimeout(seekHudTimer);
+    seekHudTimer = setTimeout(() => {
+      overlay.classList.remove('visible', 'yt-seek-pulse');
+      seekHudTimer = null;
+      lastSeekDirection = null;
+      accumulatedSeekSeconds = 0;
+    }, 750);
+  }
+}
+
+// Desktop Double-Click on Left (-10s) or Right (+10s)
+if (screenFrameEl) {
+  screenFrameEl.addEventListener('dblclick', (e) => {
+    // Stop Plyr from toggling fullscreen on double-click
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.target.closest('button, input, textarea, .icon-btn, .plyr__controls, .chat-panel, .queue-panel, .volume-hud')) {
+      return;
+    }
+
+    const rect = screenFrameEl.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+
+    if (relX < rect.width * 0.5) {
+      performSeek(-10);
+    } else {
+      performSeek(10);
+    }
+  });
+}
+
+// Mobile Double-Tap on Left (-10s) or Right (+10s)
+let lastTapTime = 0;
+let lastTapX = 0;
+let lastTapY = 0;
+let isTouchDragging = false;
+
+if (screenFrameEl) {
+  screenFrameEl.addEventListener('touchstart', (e) => {
+    isTouchDragging = false;
+  }, { passive: true });
+
+  screenFrameEl.addEventListener('touchmove', (e) => {
+    isTouchDragging = true;
+  }, { passive: true });
+
+  screenFrameEl.addEventListener('touchend', (e) => {
+    if (typeof isDrawingMode !== 'undefined' && isDrawingMode) return;
+    if (isTouchDragging) return;
+    if (e.target.closest('button, input, textarea, .icon-btn, .plyr__controls, .chat-panel, .queue-panel, .mobile-play-pause-btn, .volume-hud')) {
+      return;
+    }
+
+    const changedTouch = e.changedTouches ? e.changedTouches[0] : null;
+    if (!changedTouch) return;
+
+    const now = Date.now();
+    const tapX = changedTouch.clientX;
+    const tapY = changedTouch.clientY;
+    const timeDiff = now - lastTapTime;
+    const dist = Math.hypot(tapX - lastTapX, tapY - lastTapY);
+
+    if (timeDiff < 340 && dist < 45) {
+      // Confirmed double tap
+      e.preventDefault();
+      const rect = screenFrameEl.getBoundingClientRect();
+      const relX = tapX - rect.left;
+
+      if (relX < rect.width * 0.5) {
+        performSeek(-10);
+      } else {
+        performSeek(10);
+      }
+      lastTapTime = now;
+    } else {
+      lastTapTime = now;
+      lastTapX = tapX;
+      lastTapY = tapY;
+    }
+  });
+}
+
+// Initial HUD state sync without showing HUD immediately
+updateVolumeHud(false);
+

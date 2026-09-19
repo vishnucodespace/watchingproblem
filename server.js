@@ -7,7 +7,18 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(path.join(__dirname)));
+// Prevent browser caching of client scripts & styles during development
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
+app.use(express.static(path.join(__dirname), {
+  etag: false,
+  maxAge: 0
+}));
 
 // ---------------------------------------------------------------------------
 // Room state. Nothing here ever touches the movie file itself - the server
