@@ -85,6 +85,7 @@ const player = new Plyr('#video', {
   captions: { active: true, update: true, language: 'en' },
   controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'],
   settings: ['captions', 'quality', 'speed'],
+  keyboard: { focused: false, global: false },
 });
 
 player.on('ready', () => {
@@ -1473,7 +1474,18 @@ video.addEventListener('volumechange', () => {
   updateVolumeHud(true);
 });
 
-// 1. Keyboard Shortcuts (ArrowUp / ArrowDown / M)
+function toggleVideoPlayback() {
+  if (!video) return;
+  if (!video.src && !video.currentSrc) return;
+  if (video.paused) {
+    video.play().catch(() => {});
+  } else {
+    video.pause();
+  }
+  wakeUpOverlay();
+}
+
+// 1. Keyboard Shortcuts (Space: Play/Pause, ArrowUp / ArrowDown: Volume, ArrowLeft / ArrowRight: Seek, M: Mute, F: Fullscreen)
 window.addEventListener('keydown', (e) => {
   const activeEl = document.activeElement;
   const activeTag = activeEl ? activeEl.tagName.toLowerCase() : '';
@@ -1486,7 +1498,22 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key === 'ArrowUp') {
+  const isSpaceKey = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
+
+  if (isSpaceKey) {
+    // Intercept space completely so it ONLY toggles play/pause:
+    // 1. Prevents page from scrolling down
+    // 2. Prevents any focused button (reactions, leave room, file, etc.) from being activated
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    if (activeEl && typeof activeEl.blur === 'function') {
+      activeEl.blur();
+    }
+
+    toggleVideoPlayback();
+  } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     adjustVolume(0.05);
   } else if (e.key === 'ArrowDown') {
@@ -1501,6 +1528,43 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'm' || e.key === 'M') {
     e.preventDefault();
     toggleMuteVolume();
+  } else if (e.key === 'f' || e.key === 'F') {
+    e.preventDefault();
+    if (player && player.fullscreen) {
+      player.fullscreen.toggle();
+    }
+  }
+}, true);
+
+// Prevent keyup default on Space so buttons don't fire on key release
+window.addEventListener('keyup', (e) => {
+  const isSpaceKey = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
+  if (isSpaceKey) {
+    const activeEl = document.activeElement;
+    const activeTag = activeEl ? activeEl.tagName.toLowerCase() : '';
+    if (activeTag === 'input' || activeTag === 'textarea' || activeEl?.isContentEditable) {
+      return;
+    }
+    if (theaterScreen && theaterScreen.classList.contains('hidden')) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  }
+}, true);
+
+// Blur buttons automatically after mouse/touch clicks so they don't hold keyboard focus
+document.addEventListener('mouseup', (e) => {
+  const btn = e.target.closest('button, [role="button"]');
+  if (btn) {
+    btn.blur();
+  }
+});
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button, [role="button"]');
+  if (btn) {
+    btn.blur();
   }
 });
 
