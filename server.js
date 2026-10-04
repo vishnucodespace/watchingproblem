@@ -102,7 +102,7 @@ io.on('connection', (socket) => {
     socket.data.room = code;
     socket.data.userId = userId;
 
-    ack?.({ ok: true, code, size: room.activeSockets.size });
+    ack?.({ ok: true, code, size: room.activeSockets.size, currentAudioTrack: room.currentAudioTrack || null });
     socket.to(code).emit('partner-joined', room.activeSockets.size);
   });
 
@@ -121,17 +121,41 @@ io.on('connection', (socket) => {
     socket.to(room).emit('sync-event', payload);
   });
 
-  socket.on('time-ping', (time) => {
+  socket.on('time-ping', (payload) => {
     const room = socket.data.room;
-    if (room && typeof time === 'number') {
-      socket.to(room).emit('time-ping', time);
+    if (room && payload !== undefined && payload !== null) {
+      socket.to(room).emit('time-ping', payload);
+    }
+  });
+
+  socket.on('time-pong', (payload) => {
+    const room = socket.data.room;
+    if (room && payload !== undefined && payload !== null) {
+      socket.to(room).emit('time-pong', payload);
     }
   });
 
   socket.on('movie-info', (info) => {
     const room = socket.data.room;
     if (!room) return;
+    const roomObj = rooms.get(room);
+    if (roomObj) {
+      if (roomObj.currentMovieName && info?.name && roomObj.currentMovieName !== info.name) {
+        roomObj.currentAudioTrack = null;
+      }
+      roomObj.currentMovieName = info?.name;
+    }
     socket.to(room).emit('movie-info', info);
+  });
+
+  socket.on('audio-track-change', (payload) => {
+    const room = socket.data.room;
+    if (!room) return;
+    const roomObj = rooms.get(room);
+    if (roomObj) {
+      roomObj.currentAudioTrack = payload;
+    }
+    socket.to(room).emit('audio-track-change', payload);
   });
 
   // WebRTC Signaling

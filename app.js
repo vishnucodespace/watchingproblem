@@ -37,6 +37,13 @@ const fileNameEl = document.getElementById('file-name');
 const noFilePlaceholder = document.getElementById('no-file-placeholder');
 const screenFrame = document.querySelector('.screen-frame');
 
+// Audio Track Selector DOM elements
+const audioTrackBtn = document.getElementById('audio-track-btn');
+const audioMenu = document.getElementById('audio-menu');
+const audioMenuCloseBtn = document.getElementById('audio-menu-close-btn');
+const audioTrackList = document.getElementById('audio-track-list');
+const audioToast = document.getElementById('audio-toast');
+
 // Interaction Overlay Elements
 const interactionOverlay = document.getElementById('interaction-overlay');
 const chatPanel = document.getElementById('chat-panel');
@@ -110,41 +117,220 @@ player.on('ready', () => {
     if (seekLeftEl) plyrContainer.appendChild(seekLeftEl);
     if (seekRightEl) plyrContainer.appendChild(seekRightEl);
     if (interactionOverlay) plyrContainer.appendChild(interactionOverlay);
+    if (audioMenu && audioMenu.parentElement !== interactionOverlay) plyrContainer.appendChild(audioMenu);
+    if (audioToast && audioToast.parentElement !== interactionOverlay) plyrContainer.appendChild(audioToast);
   }
 });
 
-// Periodically save the current time to sessionStorage so it survives refreshes, and ping partner
-setInterval(() => {
-  if (video.readyState > 0) {
-    sessionStorage.setItem('tsos-video-time', video.currentTime);
-    if (currentRoomCode) {
-      socket.emit('time-ping', video.currentTime);
-    }
-  }
-}, 1000);
+// ===========================================================================
+// HIGH-RESILIENCE PLAYBACK SYNCHRONIZATION & DRIFT CORRECTION ENGINE
+// ===========================================================================
+// Sync Thresholds (seconds)
+const DRIFT_IGNORE_THRESHOLD = 0.5;       // < 0.5s: Small drift -> do nothing, continue playback smoothly
+const DRIFT_HARD_SYNC_THRESHOLD = 2.0;    // > 2.0s: Large drift -> hard sync (currentTime jump)
+const DRIFT_CATCHUP_TOLERANCE = 0.25;     // < 0.25s: Catch-up complete -> restore playbackRate to 1.0x
+const HARD_SYNC_COOLDOWN_MS = 3500;       // Prevent repeated seek thrashing on delayed packets
+const MAX_RATE_ADJUSTMENT = 0.04;         // Subtle speed adjustment (+/- 4%)
 
+// Connection health tracking
+let connectionQuality = 'GOOD';           // 'GOOD' | 'DEGRADED' | 'OFFLINE'
+let smoothedRtt = 0;                      // Round-trip time estimate in milliseconds
+let lastSyncMessageTime = Date.now();
+let lastHardSyncTime = 0;
+let isCatchingUp = false;
 let driftTimer = null;
-socket.on('time-ping', (partnerTime) => {
-  if (video.readyState > 0) {
-    const drift = Math.abs(video.currentTime - partnerTime);
-    if (drift > 0.5) {
-      document.getElementById('sync-drift-text').textContent = `Drift: ${drift.toFixed(1)}s`;
-      syncDriftIndicator.classList.remove('hidden');
+let pingTimerId = null;
 
-      clearTimeout(driftTimer);
-      driftTimer = setTimeout(() => {
-        syncDriftIndicator.classList.add('hidden');
-      }, 3000);
+function updateConnectionQuality(rtt) {
+  if (!socket.connected) {
+    connectionQuality = 'OFFLINE';
+    return;
+  }
+  const timeSinceLastMsg = Date.now() - lastSyncMessageTime;
+  if (timeSinceLastMsg > 5000 || rtt > 350) {
+    connectionQuality = 'DEGRADED';
+  } else {
+    connectionQuality = 'GOOD';
+  }
+}
+
+// Background health check
+setInterval(() => {
+  updateConnectionQuality(smoothedRtt);
+}, 3000);
+
+function calculateDynamicPlaybackRate(drift) {
+  // drift > 0: local video is behind remote (increase speed)
+  // drift < 0: local video is ahead of remote (decrease speed)
+  const absDrift = Math.abs(drift);
+  if (absDrift < DRIFT_IGNORE_THRESHOLD && !isCatchingUp) {
+    return 1.0;
+  }
+  const maxAdj = (connectionQuality === 'DEGRADED') ? 0.03 : MAX_RATE_ADJUSTMENT;
+  const factor = Math.min(maxAdj, Math.max(0.02, 0.02 + ((absDrift - 0.5) / 1.5) * (maxAdj - 0.02)));
+  const targetRate = drift > 0 ? (1.0 + factor) : (1.0 - factor);
+  return Math.round(targetRate * 1000) / 1000;
+}
+
+function restoreNormalPlaybackRate() {
+  if (video && Math.abs(video.playbackRate - 1.0) > 0.001) {
+    video.playbackRate = 1.0;
+  }
+  isCatchingUp = false;
+}
+
+function applySmoothDriftCorrection(estimatedPartnerTime, remotePaused) {
+  if (!video || video.readyState === 0) return;
+
+  // If local or remote is paused, do not adjust playback rate
+  if (video.paused || remotePaused) {
+    restoreNormalPlaybackRate();
+    if (video.paused && remotePaused) {
+      const pausedDiff = Math.abs(video.currentTime - estimatedPartnerTime);
+      if (pausedDiff > DRIFT_IGNORE_THRESHOLD) {
+        applyRemote(() => {
+          video.currentTime = estimatedPartnerTime;
+          lastEmittedTime = estimatedPartnerTime;
+        });
+      }
+    }
+    syncDriftIndicator.classList.add('hidden');
+    return;
+  }
+
+  const localTime = video.currentTime;
+  const drift = estimatedPartnerTime - localTime; // > 0: local behind; < 0: local ahead
+  const absDrift = Math.abs(drift);
+
+  // Update HUD indicator
+  if (absDrift >= DRIFT_IGNORE_THRESHOLD) {
+    document.getElementById('sync-drift-text').textContent = `Drift: ${absDrift.toFixed(1)}s`;
+    syncDriftIndicator.classList.remove('hidden');
+    clearTimeout(driftTimer);
+    driftTimer = setTimeout(() => {
+      syncDriftIndicator.classList.add('hidden');
+    }, 3000);
+  } else if (absDrift < DRIFT_CATCHUP_TOLERANCE) {
+    syncDriftIndicator.classList.add('hidden');
+  }
+
+  // 1. SMALL DRIFT (< 0.5s): Do nothing / check if catch-up complete
+  if (absDrift < DRIFT_IGNORE_THRESHOLD) {
+    if (isCatchingUp) {
+      if (absDrift < DRIFT_CATCHUP_TOLERANCE) {
+        restoreNormalPlaybackRate();
+      }
     } else {
+      restoreNormalPlaybackRate();
+    }
+    return;
+  }
+
+  // 2. LARGE DRIFT (> 2.0s, or > 3.0s if connection is degraded): Hard sync with cooldown
+  const hardSyncThreshold = (connectionQuality === 'DEGRADED') ? 3.0 : DRIFT_HARD_SYNC_THRESHOLD;
+  if (absDrift > hardSyncThreshold) {
+    const now = Date.now();
+    if (now - lastHardSyncTime > HARD_SYNC_COOLDOWN_MS) {
+      lastHardSyncTime = now;
+      restoreNormalPlaybackRate();
+      applyRemote(() => {
+        video.currentTime = estimatedPartnerTime;
+        lastEmittedTime = estimatedPartnerTime;
+      });
       syncDriftIndicator.classList.add('hidden');
     }
+    return;
   }
+
+  // 3. MEDIUM DRIFT (0.5s – 2.0s): Smooth playback rate adjustment
+  const targetRate = calculateDynamicPlaybackRate(drift);
+  if (Math.abs(video.playbackRate - targetRate) > 0.005) {
+    video.playbackRate = targetRate;
+  }
+  isCatchingUp = true;
+}
+
+function sendSyncPing() {
+  if (!currentRoomCode || !video || video.readyState === 0) return;
+  const now = Date.now();
+  socket.emit('time-ping', {
+    time: video.currentTime,
+    sendTime: now,
+    paused: video.paused,
+    rate: video.playbackRate
+  });
+}
+
+function scheduleNextPing() {
+  clearTimeout(pingTimerId);
+  const interval = (video && !video.paused) ? 1500 : 3000;
+  pingTimerId = setTimeout(() => {
+    if (video && video.readyState > 0) {
+      sessionStorage.setItem('tsos-video-time', video.currentTime);
+      sendSyncPing();
+    }
+    scheduleNextPing();
+  }, interval);
+}
+scheduleNextPing();
+
+// Incoming time-ping from partner
+socket.on('time-ping', (payload) => {
+  lastSyncMessageTime = Date.now();
+  updateConnectionQuality(smoothedRtt);
+
+  // Backward compatibility with primitive number
+  if (typeof payload === 'number') {
+    payload = { time: payload, sendTime: null, paused: video.paused, rate: 1.0 };
+  }
+  if (!payload || typeof payload.time !== 'number') return;
+
+  // Immediately reply with time-pong to allow sender to measure round-trip time
+  if (payload.sendTime && currentRoomCode) {
+    socket.emit('time-pong', {
+      originSendTime: payload.sendTime,
+      partnerTime: video.currentTime,
+      paused: video.paused,
+      rate: video.playbackRate
+    });
+  }
+
+  // Estimate partner current time with one-way latency compensation
+  const oneWayLatency = smoothedRtt > 0 ? (smoothedRtt / 2000) : 0;
+  const estimatedPartnerTime = payload.paused
+    ? payload.time
+    : payload.time + oneWayLatency * (payload.rate || 1.0);
+
+  applySmoothDriftCorrection(estimatedPartnerTime, !!payload.paused);
+});
+
+// Incoming time-pong response from partner
+socket.on('time-pong', (payload) => {
+  if (!payload || typeof payload.partnerTime !== 'number') return;
+  const now = Date.now();
+  lastSyncMessageTime = now;
+
+  if (payload.originSendTime) {
+    const sampleRtt = Math.max(0, now - payload.originSendTime);
+    if (sampleRtt < 10000) {
+      smoothedRtt = smoothedRtt === 0 ? sampleRtt : (0.7 * smoothedRtt + 0.3 * sampleRtt);
+      updateConnectionQuality(smoothedRtt);
+    }
+  }
+
+  const oneWayLatency = smoothedRtt > 0 ? (smoothedRtt / 2000) : 0;
+  const estimatedPartnerTime = payload.paused
+    ? payload.partnerTime
+    : payload.partnerTime + oneWayLatency * (payload.rate || 1.0);
+
+  applySmoothDriftCorrection(estimatedPartnerTime, !!payload.paused);
 });
 
 if (forceSyncBtn) {
   forceSyncBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (currentRoomCode && video.readyState > 0) {
+      restoreNormalPlaybackRate();
       socket.emit('sync-event', { action: 'seek', time: video.currentTime });
       if (!video.paused) {
         socket.emit('sync-event', { action: 'play', time: video.currentTime });
@@ -233,10 +419,9 @@ function applyRemote(fn) {
   suppressTimer = setTimeout(() => { suppressEmit = false; }, SUPPRESS_WINDOW_MS);
 }
 
-// Small corrections (a few hundred ms of natural network/decoder jitter)
-// aren't worth acting on and would just cause both sides to keep nudging
-// each other. Only resync if the drift is actually noticeable.
-const SEEK_THRESHOLD_SEC = 0.75;
+// Sync thresholds (DRIFT_IGNORE_THRESHOLD = 0.5s, DRIFT_HARD_SYNC_THRESHOLD = 2.0s)
+// are defined above in the drift correction engine.
+const SEEK_THRESHOLD_SEC = DRIFT_HARD_SYNC_THRESHOLD;
 let lastEmittedTime = 0;
 
 // ---- Room setup ----
@@ -273,6 +458,12 @@ function attemptJoin() {
       currentRoomCode = res.code;
       sessionStorage.setItem('tsos-room-code', res.code);
       enterTheater(res.code);
+      if (res.currentAudioTrack) {
+        pendingInitialAudioTrack = res.currentAudioTrack;
+        if (typeof applyInitialAudioTrackIfReady === 'function') {
+          applyInitialAudioTrackIfReady();
+        }
+      }
       if (res.size === 2) {
         setStatus('Both seats filled. Enjoy the show.', true);
       } else {
@@ -308,19 +499,34 @@ socket.on('partner-joined', (activeSeats) => {
   if (activeSeats === 2) {
     setStatus('Both seats filled. Enjoy the show.', true);
     playSound('join');
+    // Exchange playback state immediately upon partner arrival
+    sendSyncPing();
+    // If we have an active audio track selected, share it with the partner who just arrived
+    if (typeof localAudioTracks !== 'undefined' && localAudioTracks.length > 0 && selectedAudioTrackIndex >= 0) {
+      const cur = localAudioTracks[selectedAudioTrackIndex];
+      if (cur) {
+        socket.emit('audio-track-change', {
+          label: cur.label,
+          language: cur.language,
+          kind: cur.kind,
+          index: selectedAudioTrackIndex
+        });
+      }
+    }
   }
 });
+
 socket.on('partner-left', () => {
   setStatus("Your date's stepped into the lobby…", false);
   playSound('leave');
-  if (!video.paused) {
-    video.pause();
-    setStatus("Partner left. Pausing movie...", false);
-  }
+  // Temporary network disconnects do NOT pause the movie.
+  // The local movie continues playing smoothly from local storage.
 });
 
 socket.on('disconnect', () => {
   console.log('[DEBUG] Socket disconnected. currentRoomCode:', currentRoomCode);
+  connectionQuality = 'OFFLINE';
+  restoreNormalPlaybackRate();
   if (currentRoomCode) {
     setStatus('Connection lost. Attempting to reconnect...', false);
   } else {
@@ -330,13 +536,22 @@ socket.on('disconnect', () => {
 
 socket.on('connect', () => {
   console.log('[DEBUG] Socket connected. currentRoomCode:', currentRoomCode, 'UserId:', myUserId);
+  connectionQuality = 'GOOD';
   if (currentRoomCode) {
     // We were in a room, let's rejoin automatically
     socket.emit('join-room', { code: currentRoomCode, userId: myUserId }, (res) => {
       if (res?.ok) {
         enterTheater(currentRoomCode); // Ensure UI jumps straight to theater
+        if (res.currentAudioTrack) {
+          pendingInitialAudioTrack = res.currentAudioTrack;
+          if (typeof applyInitialAudioTrackIfReady === 'function') {
+            applyInitialAudioTrackIfReady();
+          }
+        }
         if (res.size === 2) {
           setStatus('Both seats filled. Enjoy the show.', true);
+          // Reconnection state exchange: send current playback state immediately
+          sendSyncPing();
         } else {
           setStatus("Your date's stepped into the lobby…", false);
         }
@@ -551,6 +766,9 @@ async function loadVideoFromQueue(isResume = false) {
     const url = URL.createObjectURL(file);
     video.src = url;
     video.load();
+    if (typeof detectAudioTracks === 'function') {
+      detectAudioTracks(file);
+    }
 
     if (isResume) {
       const savedTime = sessionStorage.getItem('tsos-video-time');
@@ -762,6 +980,601 @@ removeSubBtn.addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// AUDIO TRACK SELECTION & SYNCHRONIZATION
+// ---------------------------------------------------------------------------
+let localAudioTracks = [];
+let selectedAudioTrackIndex = 0;
+let suppressAudioEmit = false;
+let suppressAudioTimer = null;
+const SUPPRESS_AUDIO_WINDOW_MS = 600;
+let pendingInitialAudioTrack = null;
+let toastTimer = null;
+
+const LANG_EQUIV = {
+  ta: ['ta', 'tam', 'tamil'],
+  en: ['en', 'eng', 'english'],
+  hi: ['hi', 'hin', 'hindi'],
+  te: ['te', 'tel', 'telugu'],
+  ml: ['ml', 'mal', 'malayalam'],
+  kn: ['kn', 'kan', 'kannada'],
+  es: ['es', 'spa', 'spanish'],
+  fr: ['fr', 'fre', 'fra', 'french'],
+  de: ['de', 'ger', 'deu', 'german'],
+  it: ['it', 'ita', 'italian'],
+  ja: ['ja', 'jpn', 'japanese'],
+  ko: ['ko', 'kor', 'korean'],
+  zh: ['zh', 'chi', 'zho', 'chinese'],
+  ru: ['ru', 'rus', 'russian'],
+  pt: ['pt', 'por', 'portuguese'],
+  ar: ['ar', 'ara', 'arabic']
+};
+
+const ISO_LANG_MAP = {
+  eng: 'English', en: 'English',
+  tam: 'Tamil', ta: 'Tamil',
+  hin: 'Hindi', hi: 'Hindi',
+  tel: 'Telugu', te: 'Telugu',
+  mal: 'Malayalam', ml: 'Malayalam',
+  kan: 'Kannada', kn: 'Kannada',
+  spa: 'Spanish', es: 'Spanish',
+  fre: 'French', fra: 'French', fr: 'French',
+  ger: 'German', deu: 'German', de: 'German',
+  ita: 'Italian', it: 'Italian',
+  jpn: 'Japanese', ja: 'Japanese',
+  kor: 'Korean', ko: 'Korean',
+  chi: 'Chinese', zho: 'Chinese', zh: 'Chinese',
+  rus: 'Russian', ru: 'Russian',
+  por: 'Portuguese', pt: 'Portuguese',
+  ara: 'Arabic', ar: 'Arabic',
+  und: 'Audio'
+};
+
+function parseIso639_2(langCode) {
+  const c1 = String.fromCharCode(0x60 + ((langCode >> 10) & 0x1f));
+  const c2 = String.fromCharCode(0x60 + ((langCode >> 5) & 0x1f));
+  const c3 = String.fromCharCode(0x60 + (langCode & 0x1f));
+  const code = (c1 + c2 + c3).toLowerCase();
+  return {
+    code,
+    name: ISO_LANG_MAP[code] || (code !== '```' && code !== 'und' ? code.toUpperCase() : '')
+  };
+}
+
+function parseMp4AudioTracksWithDetails(buffer) {
+  const view = new DataView(buffer);
+  const max = buffer.byteLength;
+  const tracks = [];
+
+  function readBox(offset, end, parentTrak) {
+    while (offset + 8 <= end) {
+      let size = view.getUint32(offset);
+      const type = String.fromCharCode(
+        view.getUint8(offset + 4),
+        view.getUint8(offset + 5),
+        view.getUint8(offset + 6),
+        view.getUint8(offset + 7)
+      );
+      let headerSize = 8;
+      if (size === 1) {
+        if (offset + 16 > end) break;
+        size = Number(view.getBigUint64(offset + 8));
+        headerSize = 16;
+      } else if (size === 0) {
+        size = end - offset;
+      }
+      if (size < headerSize || offset + size > end) break;
+
+      const dataStart = offset + headerSize;
+      const dataEnd = offset + size;
+
+      if (type === 'moov') {
+        readBox(dataStart, dataEnd, null);
+      } else if (type === 'trak') {
+        const trak = { isAudio: false, language: '', label: '', kind: 'main' };
+        readBox(dataStart, dataEnd, trak);
+        if (trak.isAudio) {
+          tracks.push(trak);
+        }
+      } else if (parentTrak) {
+        if (type === 'mdia' || type === 'minf' || type === 'stbl' || type === 'udta') {
+          readBox(dataStart, dataEnd, parentTrak);
+        } else if (type === 'hdlr' && dataStart + 12 <= dataEnd) {
+          const handler = String.fromCharCode(
+            view.getUint8(dataStart + 8),
+            view.getUint8(dataStart + 9),
+            view.getUint8(dataStart + 10),
+            view.getUint8(dataStart + 11)
+          );
+          if (handler === 'soun') parentTrak.isAudio = true;
+        } else if (type === 'mdhd' && dataStart + 4 <= dataEnd) {
+          const version = view.getUint8(dataStart);
+          const langOffset = version === 1 ? dataStart + 28 : dataStart + 16;
+          if (langOffset + 2 <= dataEnd) {
+            const langCode = view.getUint16(langOffset);
+            const parsed = parseIso639_2(langCode);
+            parentTrak.language = parsed.code;
+            parentTrak.label = parsed.name || parsed.code.toUpperCase();
+          }
+        } else if (type === 'name' && dataStart < dataEnd) {
+          let nameStr = '';
+          for (let i = dataStart; i < dataEnd; i++) {
+            nameStr += String.fromCharCode(view.getUint8(i));
+          }
+          if (nameStr.trim()) {
+            parentTrak.label = nameStr.trim();
+          }
+        }
+      }
+      offset += size;
+    }
+  }
+
+  try {
+    readBox(0, max, null);
+  } catch (e) {
+    console.warn('MP4 parse error:', e);
+  }
+  return tracks;
+}
+
+function parseMkvAudioTracksWithDetails(buffer) {
+  const view = new DataView(buffer);
+  const max = buffer.byteLength;
+  const tracks = [];
+
+  function readVint(offset) {
+    if (offset >= max) return null;
+    const firstByte = view.getUint8(offset);
+    let length = 1;
+    let mask = 0x80;
+    while (length <= 8 && (firstByte & mask) === 0) {
+      length++;
+      mask >>= 1;
+    }
+    if (length > 8 || offset + length > max) return null;
+    let value = firstByte & (mask - 1);
+    for (let i = 1; i < length; i++) {
+      value = (value << 8) | view.getUint8(offset + i);
+    }
+    return { length, value };
+  }
+
+  function readElementId(offset) {
+    if (offset >= max) return null;
+    const firstByte = view.getUint8(offset);
+    let length = 1;
+    let mask = 0x80;
+    while (length <= 4 && (firstByte & mask) === 0) {
+      length++;
+      mask >>= 1;
+    }
+    if (length > 4 || offset + length > max) return null;
+    let id = 0;
+    for (let i = 0; i < length; i++) {
+      id = (id << 8) | view.getUint8(offset + i);
+    }
+    return { length, id };
+  }
+
+  function readString(offset, len) {
+    let s = '';
+    for (let i = 0; i < len; i++) {
+      s += String.fromCharCode(view.getUint8(offset + i));
+    }
+    return s;
+  }
+
+  try {
+    let offset = 0;
+    while (offset < max - 4) {
+      const idRes = readElementId(offset);
+      if (!idRes) break;
+      const sizeRes = readVint(offset + idRes.length);
+      if (!sizeRes) break;
+
+      const headerLen = idRes.length + sizeRes.length;
+      const elemEnd = Math.min(max, offset + headerLen + sizeRes.value);
+
+      if (idRes.id === 0x18538067) {
+        offset += headerLen;
+        continue;
+      }
+
+      if (idRes.id === 0x1654AE6B) {
+        let tOffset = offset + headerLen;
+        while (tOffset < elemEnd - 2) {
+          const tIdRes = readElementId(tOffset);
+          if (!tIdRes) break;
+          const tSizeRes = readVint(tOffset + tIdRes.length);
+          if (!tSizeRes) break;
+          const tHeaderLen = tIdRes.length + tSizeRes.length;
+          const tEntryEnd = Math.min(elemEnd, tOffset + tHeaderLen + tSizeRes.value);
+
+          if (tIdRes.id === 0xAE) {
+            let cur = tOffset + tHeaderLen;
+            let trackType = 0;
+            let language = '';
+            let name = '';
+            let trackNum = 0;
+
+            while (cur < tEntryEnd - 1) {
+              const subIdRes = readElementId(cur);
+              if (!subIdRes) break;
+              const subSizeRes = readVint(cur + subIdRes.length);
+              if (!subSizeRes) break;
+              const subHead = subIdRes.length + subSizeRes.length;
+              const valOffset = cur + subHead;
+
+              if (subIdRes.id === 0x83) {
+                trackType = view.getUint8(valOffset);
+              } else if (subIdRes.id === 0xD7) {
+                trackNum = view.getUint8(valOffset);
+              } else if (subIdRes.id === 0x22B59C) {
+                language = readString(valOffset, subSizeRes.value).trim().toLowerCase();
+              } else if (subIdRes.id === 0x536E) {
+                name = readString(valOffset, subSizeRes.value).trim();
+              }
+              cur += subHead + subSizeRes.value;
+            }
+
+            if (trackType === 2) {
+              const langDisplay = ISO_LANG_MAP[language] || (language ? language.toUpperCase() : '');
+              tracks.push({
+                isAudio: true,
+                number: trackNum,
+                language: language || '',
+                label: name || langDisplay || `Track ${tracks.length + 1}`,
+                kind: 'main'
+              });
+            }
+          }
+          tOffset = tEntryEnd;
+        }
+        break;
+      }
+      offset = elemEnd;
+    }
+  } catch (err) {
+    console.warn('MKV/WebM parse error:', err);
+  }
+  return tracks;
+}
+
+async function parseContainerAudioTracks(file) {
+  if (!file) return [];
+  const ext = file.name.split('.').pop().toLowerCase();
+  const sliceSize = Math.min(file.size, 5 * 1024 * 1024);
+  const buffer = await file.slice(0, sliceSize).arrayBuffer();
+
+  let detected = [];
+  if (ext === 'mp4' || ext === 'm4v' || ext === 'mov') {
+    detected = parseMp4AudioTracksWithDetails(buffer);
+  } else if (ext === 'mkv' || ext === 'webm') {
+    detected = parseMkvAudioTracksWithDetails(buffer);
+  }
+
+  return detected.map((t, idx) => ({
+    id: String(t.number || idx),
+    label: t.label || (t.language ? (ISO_LANG_MAP[t.language] || t.language.toUpperCase()) : `Track ${idx + 1}`),
+    language: t.language || '',
+    kind: t.kind || 'main',
+    index: idx,
+    enabled: idx === 0
+  }));
+}
+
+function showNotificationToast(msg) {
+  if (!audioToast) return;
+  audioToast.textContent = msg;
+  audioToast.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    audioToast.classList.add('hidden');
+  }, 4000);
+}
+
+function isLanguageMatch(langA, langB) {
+  if (!langA || !langB) return false;
+  const a = langA.toLowerCase().trim();
+  const b = langB.toLowerCase().trim();
+  if (a === b) return true;
+
+  for (const group of Object.values(LANG_EQUIV)) {
+    if (group.includes(a) && group.includes(b)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findMatchingTrack(remoteTrack) {
+  if (!remoteTrack || localAudioTracks.length === 0) return -1;
+
+  // 1. Match by language
+  if (remoteTrack.language) {
+    const idx = localAudioTracks.findIndex(t => isLanguageMatch(t.language, remoteTrack.language));
+    if (idx !== -1) return idx;
+  }
+
+  // 2. Match by label
+  if (remoteTrack.label) {
+    const remoteLabel = remoteTrack.label.toLowerCase().trim();
+    const idx = localAudioTracks.findIndex(t => {
+      if (!t.label) return false;
+      const localLabel = t.label.toLowerCase().trim();
+      return localLabel === remoteLabel || isLanguageMatch(localLabel, remoteLabel);
+    });
+    if (idx !== -1) return idx;
+  }
+
+  // 3. Match by kind (if non-main)
+  if (remoteTrack.kind && remoteTrack.kind !== 'main') {
+    const idx = localAudioTracks.findIndex(t => t.kind === remoteTrack.kind);
+    if (idx !== -1) return idx;
+  }
+
+  // 4. Fallback to index if in bounds
+  if (typeof remoteTrack.index === 'number' && remoteTrack.index >= 0 && remoteTrack.index < localAudioTracks.length) {
+    return remoteTrack.index;
+  }
+
+  return -1;
+}
+
+async function detectAudioTracks(file) {
+  localAudioTracks = [];
+  selectedAudioTrackIndex = 0;
+
+  // 1. Check if browser exposes video.audioTracks
+  if (video.audioTracks && video.audioTracks.length > 0) {
+    for (let i = 0; i < video.audioTracks.length; i++) {
+      const t = video.audioTracks[i];
+      localAudioTracks.push({
+        id: t.id || String(i),
+        label: t.label || t.language || `Track ${i + 1}`,
+        language: t.language || '',
+        kind: t.kind || 'main',
+        index: i,
+        enabled: t.enabled
+      });
+      if (t.enabled) {
+        selectedAudioTrackIndex = i;
+      }
+    }
+  }
+
+  // 2. Inspect container for richer labels/metadata or if video.audioTracks is empty
+  if (file) {
+    try {
+      const containerTracks = await parseContainerAudioTracks(file);
+      if (containerTracks && containerTracks.length > 0) {
+        if (localAudioTracks.length === 0) {
+          localAudioTracks = containerTracks;
+        } else {
+          // Enrich video.audioTracks with labels/languages from container
+          for (let i = 0; i < localAudioTracks.length && i < containerTracks.length; i++) {
+            if (!localAudioTracks[i].label || localAudioTracks[i].label.startsWith('Track ') || localAudioTracks[i].label === localAudioTracks[i].language) {
+              if (containerTracks[i].label) localAudioTracks[i].label = containerTracks[i].label;
+            }
+            if (!localAudioTracks[i].language && containerTracks[i].language) {
+              localAudioTracks[i].language = containerTracks[i].language;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Audio container inspection error:', err);
+    }
+  }
+
+  updateAudioSelectorUI();
+  restorePersistedAudioTrack();
+  applyInitialAudioTrackIfReady();
+}
+
+function updateAudioSelectorUI() {
+  if (!audioTrackBtn || !audioMenu) return;
+
+  if (localAudioTracks.length <= 1) {
+    // Single audio track or none: HIDE audio selector
+    audioTrackBtn.classList.add('hidden');
+    audioMenu.classList.add('hidden');
+    return;
+  }
+
+  // Multiple audio tracks: SHOW audio selector
+  audioTrackBtn.classList.remove('hidden');
+  renderAudioTrackMenu();
+}
+
+function renderAudioTrackMenu() {
+  if (!audioTrackList) return;
+  audioTrackList.innerHTML = '';
+
+  localAudioTracks.forEach((track, index) => {
+    const item = document.createElement('button');
+    item.className = 'audio-menu-item' + (index === selectedAudioTrackIndex ? ' active' : '');
+    item.setAttribute('role', 'menuitem');
+
+    const check = document.createElement('span');
+    check.className = 'audio-menu-check';
+    check.textContent = index === selectedAudioTrackIndex ? '✓' : '';
+
+    const label = document.createElement('span');
+    label.className = 'audio-menu-label';
+    label.textContent = track.label || track.language || `Track ${index + 1}`;
+
+    item.appendChild(check);
+    item.appendChild(label);
+
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchAudioTrack(index, true);
+      audioMenu.classList.add('hidden');
+    });
+
+    audioTrackList.appendChild(item);
+  });
+}
+
+function switchAudioTrack(targetIndex, shouldEmit = true) {
+  if (targetIndex < 0 || targetIndex >= localAudioTracks.length) return;
+
+  const track = localAudioTracks[targetIndex];
+  selectedAudioTrackIndex = targetIndex;
+
+  // Real audio track switching via video.audioTracks if supported
+  if (video.audioTracks && video.audioTracks.length > targetIndex) {
+    try {
+      for (let i = 0; i < video.audioTracks.length; i++) {
+        video.audioTracks[i].enabled = (i === targetIndex);
+      }
+      localAudioTracks.forEach((t, i) => { t.enabled = (i === targetIndex); });
+    } catch (err) {
+      console.error('Audio track switch error on video element:', err);
+      showNotificationToast('Audio switching failed on this browser.');
+    }
+  } else {
+    // If browser doesn't expose video.audioTracks
+    console.info(`Selected audio track: ${track.label}. Note: video.audioTracks is not exposed in this browser.`);
+  }
+
+  // Update menu UI checkmark
+  renderAudioTrackMenu();
+
+  // Persist selection for this movie
+  persistAudioTrackSelection(myMovieName, track);
+
+  // Emit to partner if user-initiated and not suppressed
+  if (shouldEmit && !suppressAudioEmit && currentRoomCode) {
+    socket.emit('audio-track-change', {
+      label: track.label,
+      language: track.language,
+      kind: track.kind,
+      index: targetIndex
+    });
+  }
+}
+
+function persistAudioTrackSelection(movieName, track) {
+  if (!movieName || !track) return;
+  const key = `tsos-audio-pref-${normalizeName(movieName)}`;
+  try {
+    sessionStorage.setItem(key, JSON.stringify({
+      movieName: movieName,
+      language: track.language,
+      label: track.label,
+      kind: track.kind
+    }));
+  } catch (e) {}
+}
+
+function restorePersistedAudioTrack() {
+  if (!myMovieName || localAudioTracks.length <= 1) return;
+  const key = `tsos-audio-pref-${normalizeName(myMovieName)}`;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return;
+    const pref = JSON.parse(raw);
+    const matchIdx = findMatchingTrack(pref);
+    if (matchIdx !== -1 && matchIdx !== selectedAudioTrackIndex) {
+      switchAudioTrack(matchIdx, false);
+    }
+  } catch (e) {}
+}
+
+function applyInitialAudioTrackIfReady() {
+  if (!pendingInitialAudioTrack || localAudioTracks.length === 0) return;
+  const matchIdx = findMatchingTrack(pendingInitialAudioTrack);
+  if (matchIdx !== -1) {
+    suppressAudioEmit = true;
+    switchAudioTrack(matchIdx, false);
+    clearTimeout(suppressAudioTimer);
+    suppressAudioTimer = setTimeout(() => {
+      suppressAudioEmit = false;
+    }, SUPPRESS_AUDIO_WINDOW_MS);
+  } else {
+    const trackName = pendingInitialAudioTrack.label || pendingInitialAudioTrack.language || 'Selected';
+    showNotificationToast(`${trackName} audio track is not available in your movie file.`);
+  }
+  pendingInitialAudioTrack = null;
+}
+
+// Receive remote audio track change from partner
+socket.on('audio-track-change', (payload) => {
+  if (!payload) return;
+
+  if (localAudioTracks.length === 0) {
+    // Video might still be loading; save as pending
+    pendingInitialAudioTrack = payload;
+    return;
+  }
+
+  const matchIdx = findMatchingTrack(payload);
+  if (matchIdx !== -1) {
+    suppressAudioEmit = true;
+    switchAudioTrack(matchIdx, false);
+    clearTimeout(suppressAudioTimer);
+    suppressAudioTimer = setTimeout(() => {
+      suppressAudioEmit = false;
+    }, SUPPRESS_AUDIO_WINDOW_MS);
+  } else {
+    const trackName = payload.label || payload.language || 'Selected';
+    showNotificationToast(`${trackName} audio track is not available in your movie file.`);
+  }
+});
+
+video.addEventListener('loadedmetadata', () => {
+  if (video.audioTracks && video.audioTracks.length > 0) {
+    if (localAudioTracks.length === 0 || video.audioTracks.length !== localAudioTracks.length) {
+      detectAudioTracks(null);
+    }
+  }
+});
+
+// Audio selector button & menu events
+if (audioTrackBtn) {
+  audioTrackBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!audioMenu) return;
+    const isHidden = audioMenu.classList.contains('hidden');
+    if (isHidden) {
+      if (chatPanel) chatPanel.classList.add('hidden');
+      if (queuePanel) queuePanel.classList.add('hidden');
+      audioMenu.classList.remove('hidden');
+      audioTrackBtn.setAttribute('aria-expanded', 'true');
+    } else {
+      audioMenu.classList.add('hidden');
+      audioTrackBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+if (audioMenuCloseBtn) {
+  audioMenuCloseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (audioMenu) audioMenu.classList.add('hidden');
+    if (audioTrackBtn) audioTrackBtn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (audioMenu && !audioMenu.classList.contains('hidden')) {
+    if (!e.target.closest('#audio-menu, #audio-track-btn')) {
+      audioMenu.classList.add('hidden');
+      if (audioTrackBtn) audioTrackBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && audioMenu && !audioMenu.classList.contains('hidden')) {
+    audioMenu.classList.add('hidden');
+    if (audioTrackBtn) audioTrackBtn.setAttribute('aria-expanded', 'false');
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Auto-Hiding Overlay Logic (Netflix Style)
 // ---------------------------------------------------------------------------
 let interactionTimer = null;
@@ -771,8 +1584,8 @@ function wakeUpOverlay() {
   if (mobilePlayPauseBtn) mobilePlayPauseBtn.classList.remove('hidden');
   if (interactionTimer) clearTimeout(interactionTimer);
 
-  // If the chat panel is currently OPEN, or video is paused, do not hide the UI!
-  if (!chatPanel.classList.contains('hidden') || !video || video.paused) return;
+  // If the chat panel or audio menu is currently OPEN, or video is paused, do not hide the UI!
+  if (!chatPanel.classList.contains('hidden') || (audioMenu && !audioMenu.classList.contains('hidden')) || !video || video.paused) return;
 
   interactionTimer = setTimeout(() => {
     interactionOverlay.classList.add('hide-ui');
@@ -902,14 +1715,17 @@ video.addEventListener('play', () => {
 
 video.addEventListener('pause', () => {
   if (suppressEmit) return;
+  restoreNormalPlaybackRate();
   socket.emit('sync-event', { action: 'pause', time: video.currentTime });
 });
 
 video.addEventListener('seeked', () => {
   if (suppressEmit) return;
+  restoreNormalPlaybackRate();
   if (Math.abs(video.currentTime - lastEmittedTime) < 0.05) return; // ignore no-op seeks
   lastEmittedTime = video.currentTime;
   socket.emit('sync-event', { action: 'seek', time: video.currentTime });
+  sendSyncPing();
 });
 
 // ---- Incoming: apply the partner's action without echoing it back ----
@@ -922,9 +1738,12 @@ socket.on('sync-event', ({ action, time }) => {
         if (myMovieName && partnerMovieName && normalizeName(myMovieName) !== normalizeName(partnerMovieName)) {
           return; // Ignore incoming play if mismatched
         }
-        if (Math.abs(video.currentTime - time) > SEEK_THRESHOLD_SEC) {
+        // Only hard-seek on play if drift is large (> 2.0s); small/medium drifts converge smoothly without freeze
+        if (Math.abs(video.currentTime - time) > DRIFT_HARD_SYNC_THRESHOLD) {
           video.currentTime = time;
+          lastEmittedTime = time;
         }
+        restoreNormalPlaybackRate();
         video.play().catch(() => {
           // Autoplay can be blocked before the first user gesture on this
           // tab; the next local play/pause click will naturally resync.
@@ -932,13 +1751,17 @@ socket.on('sync-event', ({ action, time }) => {
         break;
 
       case 'pause':
-        if (Math.abs(video.currentTime - time) > SEEK_THRESHOLD_SEC) {
-          video.currentTime = time;
-        }
+        restoreNormalPlaybackRate();
         video.pause();
+        // While paused, align exact frame if noticeable without causing playback stutter
+        if (Math.abs(video.currentTime - time) > DRIFT_IGNORE_THRESHOLD) {
+          video.currentTime = time;
+          lastEmittedTime = time;
+        }
         break;
 
       case 'seek':
+        restoreNormalPlaybackRate();
         video.currentTime = time;
         lastEmittedTime = time;
         break;
@@ -1769,7 +2592,7 @@ if (screenFrameEl) {
     e.preventDefault();
     e.stopPropagation();
 
-    if (e.target.closest('button, input, textarea, .icon-btn, .plyr__controls, .chat-panel, .queue-panel, .volume-hud')) {
+    if (e.target.closest('button, input, textarea, .icon-btn, .plyr__controls, .chat-panel, .queue-panel, .volume-hud, .audio-menu, .audio-track-btn')) {
       return;
     }
 
@@ -1802,7 +2625,7 @@ if (screenFrameEl) {
   screenFrameEl.addEventListener('touchend', (e) => {
     if (typeof isDrawingMode !== 'undefined' && isDrawingMode) return;
     if (isTouchDragging) return;
-    if (e.target.closest('button, input, textarea, .icon-btn, .plyr__controls, .chat-panel, .queue-panel, .mobile-play-pause-btn, .volume-hud')) {
+    if (e.target.closest('button, input, textarea, .icon-btn, .plyr__controls, .chat-panel, .queue-panel, .mobile-play-pause-btn, .volume-hud, .audio-menu, .audio-track-btn')) {
       return;
     }
 
